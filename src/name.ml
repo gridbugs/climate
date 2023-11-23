@@ -2,11 +2,27 @@ open! Import
 
 type t = string
 
+module Invalid = struct
+  type t = Empty_name
+end
+
 let of_string string =
-  if String.is_empty string then Error `Empty_name else Ok string
+  if String.is_empty string then Error Invalid.Empty_name else Ok string
+
+let of_string_exn string =
+  match of_string string with
+  | Ok t -> t
+  | Error _ -> raise (Invalid_argument "Name.of_string_exn")
 
 let to_string t = t
 let equal = String.equal
+
+let kind t =
+  match String.length t with
+  | 1 -> `Short
+  | n ->
+      assert (n > 1);
+      `Long
 
 module Set = Set.Make (String)
 module Map = Map.Make (String)

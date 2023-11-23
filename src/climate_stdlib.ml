@@ -5,6 +5,11 @@ module Result = struct
   let map_error t ~f = map_error f t
   let bind t ~f = bind t f
 
+  let both a b =
+    match a with
+    | Error e -> Error e
+    | Ok a -> ( match b with Error e -> Error e | Ok b -> Ok (a, b))
+
   module List = struct
     type ('a, 'error) t = ('a, 'error) result list
 
@@ -13,6 +18,20 @@ module Result = struct
       | Ok x :: xs -> map (all xs) ~f:(fun xs -> x :: xs)
       | Error error :: _xs -> Error error
   end
+
+  module O = struct
+    let ( >>= ) t f = bind t ~f
+    let ( >>| ) t f = map t ~f
+    let ( let* ) = ( >>= )
+    let ( let+ ) = ( >>| )
+    let ( and+ ) = both
+  end
+end
+
+module Option = struct
+  include Option
+
+  let map t ~f = map f t
 end
 
 module List = struct
@@ -85,6 +104,20 @@ module String = struct
         Some (sub s ~pos:0 ~len:i, sub s ~pos:(i + 1) ~len:(length s - i - 1))
 
   let is_empty s = String.length s == 0
+
+  let rec check_prefix s ~prefix len i =
+    i = len || (s.[i] = prefix.[i] && check_prefix s ~prefix len (i + 1))
+
+  let is_prefix s ~prefix =
+    let len = length s in
+    let prefix_len = length prefix in
+    len >= prefix_len && check_prefix s ~prefix prefix_len 0
+
+  let drop_prefix s ~prefix =
+    if is_prefix s ~prefix then
+      if length s = length prefix then Some ""
+      else Some (sub s ~pos:(length prefix) ~len:(length s - length prefix))
+    else None
 
   module Set = Set.Make (String)
   module Map = Map.Make (String)

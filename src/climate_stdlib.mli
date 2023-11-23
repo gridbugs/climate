@@ -1,7 +1,5 @@
 module Result : sig
-  include module type of struct
-    include Result
-  end
+  include module type of Result
 
   val map : ('a, 'error) t -> f:('a -> 'b) -> ('b, 'error) t
   val map_error : ('a, 'error1) t -> f:('error1 -> 'error2) -> ('a, 'error2) t
@@ -12,20 +10,30 @@ module Result : sig
 
     val all : ('a, 'error) t -> ('a list, 'error) result
   end
+
+  module O : sig
+    val ( >>| ) : ('a, 'error) t -> ('a -> 'b) -> ('b, 'error) t
+    val ( >>= ) : ('a, 'error) t -> ('a -> ('b, 'error) t) -> ('b, 'error) t
+    val ( let* ) : ('a, 'error) t -> ('a -> ('b, 'error) t) -> ('b, 'error) t
+    val ( and+ ) : ('a, 'error) t -> ('b, 'error) t -> ('a * 'b, 'error) t
+    val ( let+ ) : ('a, 'error) t -> ('a -> 'b) -> ('b, 'error) t
+  end
+end
+
+module Option : sig
+  include module type of Option
+
+  val map : 'a t -> f:('a -> 'b) -> 'b t
 end
 
 module List : sig
-  include module type of struct
-    include StdLabels.List
-  end
+  include module type of StdLabels.List
 
   val find_duplicate : eq:('a -> 'a -> bool) -> 'a t -> 'a option
 end
 
 module Map : sig
-  include module type of struct
-    include MoreLabels.Map
-  end
+  include module type of MoreLabels.Map
 
   module type S = sig
     include S
@@ -54,22 +62,18 @@ module Nonnegative_int : sig
 end
 
 module String : sig
-  include module type of struct
-    include StdLabels.String
-  end
+  include module type of StdLabels.String
 
-  val lsplit2 : t -> on:char -> (string * string) option
+  val lsplit2 : t -> on:char -> (t * t) option
   val is_empty : t -> bool
+  val drop_prefix : t -> prefix:t -> t option
 
   module Set : Set.S with type elt = t
   module Map : Map.S with type key = t
 end
 
 module Int : sig
-  include module type of struct
-    include Int
-  end
-
+  include module type of Int
   module Set : Set.S with type elt = t
   module Map : Map.S with type key = t
 end
