@@ -3,6 +3,11 @@ module Nonempty_list = Climate_stdlib.Nonempty_list
 
 module Names = struct
   type t = Name.t Nonempty_list.t
+
+  let to_string_hum t =
+    Nonempty_list.to_list t
+    |> List.map ~f:Name.to_string_with_dashes
+    |> String.concat ~sep:","
 end
 
 module Command_line = struct
@@ -10,6 +15,8 @@ module Command_line = struct
 end
 
 module Error = struct
+  let sprintf = Printf.sprintf
+
   module Parse_error = struct
     (* Errors encountered while interpreting command-line arguments. This
        indicates that the user of a CLI program made with this library has
@@ -17,9 +24,12 @@ module Error = struct
     type t =
       | Opt_lacks_arg of Name.t
       | Flag_has_arg of { name : Name.t; value : string }
-      | Opt_used_in_non_last_position_of_short_name_sequence of Name.t
+      | Opt_used_in_non_last_position_of_short_name_sequence of {
+          name : Name.t;
+          short_sequence : string;
+        }
       | No_such_name of Name.t
-      | Invalid_name of Name.Invalid.t
+      | Name_would_begin_with_dash of string
       | Short_name_used_with_dash_dash of Name.t
       | Pos_req_missing of int
       | Opt_req_missing of Names.t
@@ -33,13 +43,74 @@ module Error = struct
         }
 
     exception E of t
+
+    let to_string = function
+      | Opt_lacks_arg name ->
+          sprintf "Option %s lacks argument." (Name.to_string_with_dashes name)
+      | Flag_has_arg { name; value } ->
+          sprintf "Flag %s does not take an argument but was passed %S"
+            (Name.to_string_with_dashes name)
+            value
+      | Opt_used_in_non_last_position_of_short_name_sequence
+          { name; short_sequence } ->
+          sprintf
+            "Option %s requires an argument but appears in a sequence of short \
+             names \"-%s\" in a non-final position. When passing multiple \
+             short names in a sequence only the final one may take an \
+             argument."
+            (Name.to_string_with_dashes name)
+            short_sequence
+      | No_such_name name ->
+          sprintf "Unknown name %S" (Name.to_string_with_dashes name)
+      | Name_would_begin_with_dash string ->
+          sprintf "The term %S is invalid as it begins with three dashes."
+            string
+      | Short_name_used_with_dash_dash name ->
+          sprintf
+            "Single-character names must only be specified with a single dash. \
+             \"--%s\" is not allowed as it uses two dashes."
+            (Name.to_string name)
+      | Pos_req_missing i ->
+          sprintf "Missing required positional argument at position %d." i
+      | Opt_req_missing names ->
+          sprintf "Missing required option %s" (Names.to_string_hum names)
+      | Opt_appeared_multiple_times (names, n) ->
+          sprintf
+            "The option %s was passed %d times but may only appear at most \
+             once."
+            (Names.to_string_hum names)
+            n
+      | Opt_req_appeared_multiple_times (names, n) ->
+          sprintf
+            "The option %s was passed %d times but must be passed exactly once."
+            (Names.to_string_hum names)
+            n
+      | Flag_appeared_multiple_times (names, n) ->
+          sprintf
+            "The flag %s was passed %d times but must may only appear at most \
+             once."
+            (Names.to_string_hum names)
+            n
+      | Incomplete_command ->
+          "The command is incomplete. Additional subcommands are required to \
+           form a command."
+      | Conv_failed { locator; message } ->
+          let locator_string =
+            match locator with
+            | `Named name ->
+                sprintf "the argument to %s" (Name.to_string_with_dashes name)
+            | `Positional i -> sprintf "the argument at position %d" i
+          in
+          sprintf "Failed to parse %s: %s" locator_string message
+
+    let exit_code = 124
   end
 
   module Spec_error = struct
     (* Errors that indicate that a client of this library has attempted to create an invalid argument spec. *)
     type t =
       | Duplicate_name of Name.t
-      | Invalid_name of Name.Invalid.t
+      | Invalid_name of (string * Name.Invalid.t)
       | Negative_position of int
       | Duplicate_enum_names of string list
       | No_such_enum_value of { valid_names : string list }
@@ -59,7 +130,7 @@ module Error = struct
   end
 end
 
-module Arg_table = struct
+module Name_table = struct
   module Spec = struct
     type arg_info = { has_arg : bool }
     type t = arg_info Name.Map.t
@@ -156,83 +227,82 @@ module Arg_table = struct
       | x :: xs -> (
           match String.drop_prefix x ~prefix:"--" with
           | Some name_string -> (
-              match String.lsplit2 name_string ~on:'=' with
-              | Some (name_string, value) -> (
-                  match Name.of_string name_string with
-                  | Error invalid ->
-                      Error (Error.Parse_error.Invalid_name invalid)
-                  | Ok name -> (
-                      match Name.kind name with
-                      | `Short ->
-                          Error
-                            (Error.Parse_error.Short_name_used_with_dash_dash
-                               name)
-                      | `Long -> (
-                          match Name.Map.find spec name with
-                          | None -> Error (Error.Parse_error.No_such_name name)
-                          | Some { Spec.has_arg = false } ->
-                              Error
-                                (Error.Parse_error.Flag_has_arg { name; value })
-                          | Some { has_arg = true } ->
-                              let acc = add_opt acc ~name ~value in
-                              parse_rec acc xs)))
-              | None -> (
-                  match Name.of_string name_string with
-                  | Error invalid ->
-                      Error (Error.Parse_error.Invalid_name invalid)
-                  | Ok name -> (
-                      match Name.kind name with
-                      | `Short ->
-                          Error
-                            (Error.Parse_error.Short_name_used_with_dash_dash
-                               name)
-                      | `Long -> (
-                          match Name.Map.find spec name with
-                          | None -> Error (Error.Parse_error.No_such_name name)
-                          | Some { Spec.has_arg = false } ->
-                              let acc = add_flag acc ~name in
-                              parse_rec acc xs
-                          | Some { has_arg = true } -> (
-                              match xs with
-                              | [] ->
-                                  Error (Error.Parse_error.Opt_lacks_arg name)
-                              | x :: xs ->
-                                  let acc = add_opt acc ~name ~value:x in
-                                  parse_rec acc xs)))))
+              if String.starts_with name_string ~prefix:"-" then
+                Error (Error.Parse_error.Name_would_begin_with_dash name_string)
+              else
+                match String.lsplit2 name_string ~on:'=' with
+                | Some (name_string, value) -> (
+                    let name = Name.of_string_exn name_string in
+                    match Name.kind name with
+                    | `Short ->
+                        Error
+                          (Error.Parse_error.Short_name_used_with_dash_dash name)
+                    | `Long -> (
+                        match Name.Map.find spec name with
+                        | None -> Error (Error.Parse_error.No_such_name name)
+                        | Some { Spec.has_arg = false } ->
+                            Error
+                              (Error.Parse_error.Flag_has_arg { name; value })
+                        | Some { has_arg = true } ->
+                            let acc = add_opt acc ~name ~value in
+                            parse_rec acc xs))
+                | None -> (
+                    let name = Name.of_string_exn name_string in
+                    match Name.kind name with
+                    | `Short ->
+                        Error
+                          (Error.Parse_error.Short_name_used_with_dash_dash name)
+                    | `Long -> (
+                        match Name.Map.find spec name with
+                        | None -> Error (Error.Parse_error.No_such_name name)
+                        | Some { Spec.has_arg = false } ->
+                            let acc = add_flag acc ~name in
+                            parse_rec acc xs
+                        | Some { has_arg = true } -> (
+                            match xs with
+                            | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
+                            | x :: xs ->
+                                let acc = add_opt acc ~name ~value:x in
+                                parse_rec acc xs))))
           | None -> (
               match String.drop_prefix x ~prefix:"-" with
-              | Some names -> (
-                  match String.length names with
-                  | 1 -> (
-                      let name = Name.of_string_exn names in
-                      match Name.Map.find spec name with
-                      | None -> Error (Error.Parse_error.No_such_name name)
-                      | Some { Spec.has_arg = false } ->
-                          let acc = add_flag acc ~name in
-                          parse_rec acc xs
-                      | Some { has_arg = true } -> (
-                          match xs with
-                          | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
-                          | x :: xs ->
-                              let acc = add_opt acc ~name ~value:x in
-                              parse_rec acc xs))
-                  | n -> (
-                      assert (n > 1);
-                      let name =
-                        String.get names 1 |> String.make 1
-                        |> Name.of_string_exn
-                      in
-                      match Name.Map.find spec name with
-                      | None -> Error (Error.Parse_error.No_such_name name)
-                      | Some { Spec.has_arg = true } ->
-                          Error
-                            (Error.Parse_error
-                             .Opt_used_in_non_last_position_of_short_name_sequence
-                               name)
-                      | Some { has_arg = false } ->
-                          let acc = add_flag acc ~name in
-                          let rest = String.sub names ~pos:1 ~len:(n - 1) in
-                          parse_rec acc (String.cat "-" rest :: xs)))
+              | Some short_sequence ->
+                  let rec loop acc rem_names =
+                    match String.length rem_names with
+                    | 1 -> (
+                        let name = Name.of_string_exn rem_names in
+                        match Name.Map.find spec name with
+                        | None -> Error (Error.Parse_error.No_such_name name)
+                        | Some { Spec.has_arg = false } ->
+                            let acc = add_flag acc ~name in
+                            parse_rec acc xs
+                        | Some { has_arg = true } -> (
+                            match xs with
+                            | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
+                            | x :: xs ->
+                                let acc = add_opt acc ~name ~value:x in
+                                parse_rec acc xs))
+                    | n -> (
+                        assert (n > 1);
+                        let name =
+                          String.get rem_names 1 |> String.make 1
+                          |> Name.of_string_exn
+                        in
+                        match Name.Map.find spec name with
+                        | None -> Error (Error.Parse_error.No_such_name name)
+                        | Some { Spec.has_arg = true } ->
+                            Error
+                              (Error.Parse_error
+                               .Opt_used_in_non_last_position_of_short_name_sequence
+                                 { name; short_sequence })
+                        | Some { has_arg = false } ->
+                            let acc = add_flag acc ~name in
+                            let rest =
+                              String.sub rem_names ~pos:1 ~len:(n - 1)
+                            in
+                            loop acc rest)
+                  in
+                  loop acc short_sequence
               | None ->
                   let acc = add_pos acc x in
                   parse_rec acc xs))
@@ -312,20 +382,20 @@ module Term = struct
     in
     { parse; print }
 
-  type 'a arg_compute = Arg_table.t -> 'a
-  type 'a t = { arg_spec : Arg_table.Spec.t; arg_compute : 'a arg_compute }
+  type 'a arg_compute = Name_table.t -> 'a
+  type 'a t = { arg_spec : Name_table.Spec.t; arg_compute : 'a arg_compute }
   type 'a nonempty_list = 'a Nonempty_list.t = ( :: ) of ('a * 'a list)
 
   let map { arg_spec; arg_compute } ~f =
-    { arg_spec; arg_compute = (fun arg_table -> f (arg_compute arg_table)) }
+    { arg_spec; arg_compute = (fun name_table -> f (arg_compute name_table)) }
 
   let both x y =
     {
-      arg_spec = Arg_table.Spec.merge x.arg_spec y.arg_spec;
+      arg_spec = Name_table.Spec.merge x.arg_spec y.arg_spec;
       arg_compute =
-        (fun arg_table ->
-          let x_value = x.arg_compute arg_table in
-          let y_value = y.arg_compute arg_table in
+        (fun name_table ->
+          let x_value = x.arg_compute name_table in
+          let y_value = y.arg_compute name_table in
           (x_value, y_value));
     }
 
@@ -339,15 +409,16 @@ module Term = struct
     Nonempty_list.map ~f:(fun string ->
         match Name.of_string string with
         | Ok name -> name
-        | Error invalid -> raise Error.Spec_error.(E (Invalid_name invalid)))
+        | Error invalid ->
+            raise Error.Spec_error.(E (Invalid_name (string, invalid))))
 
   let opt_multi names conv =
     let names = names_of_strings names in
     {
-      arg_spec = Arg_table.Spec.opt names;
+      arg_spec = Name_table.Spec.opt names;
       arg_compute =
-        (fun arg_table ->
-          Arg_table.get_opts_names_by_name arg_table names
+        (fun name_table ->
+          Name_table.get_opts_names_by_name name_table names
           |> List.map ~f:(fun (name, value) ->
                  match conv.parse value with
                  | Ok value -> value
@@ -386,9 +457,9 @@ module Term = struct
   let flag_count names =
     let names = names_of_strings names in
     {
-      arg_spec = Arg_table.Spec.flag names;
+      arg_spec = Name_table.Spec.flag names;
       arg_compute =
-        (fun arg_table -> Arg_table.get_flag_count_names arg_table names);
+        (fun name_table -> Name_table.get_flag_count_names name_table names);
     }
 
   let flag names =
@@ -408,10 +479,10 @@ module Term = struct
       | None -> raise Error.Spec_error.(E (Negative_position i))
     in
     {
-      arg_spec = Arg_table.Spec.empty;
+      arg_spec = Name_table.Spec.empty;
       arg_compute =
-        (fun arg_table ->
-          Arg_table.get_pos arg_table (Nonnegative_int.to_int i)
+        (fun name_table ->
+          Name_table.get_pos name_table (Nonnegative_int.to_int i)
           |> Option.map ~f:(fun x ->
                  match conv.parse x with
                  | Ok x -> x
@@ -434,10 +505,10 @@ module Term = struct
 
   let pos_all conv =
     {
-      arg_spec = Arg_table.Spec.empty;
+      arg_spec = Name_table.Spec.empty;
       arg_compute =
-        (fun arg_table ->
-          Arg_table.get_pos_all arg_table
+        (fun name_table ->
+          Name_table.get_pos_all name_table
           |> List.mapi ~f:(fun i x ->
                  match conv.parse x with
                  | Ok x -> x
@@ -448,12 +519,12 @@ module Term = struct
     }
 
   let eval t command_line =
-    let arg_table =
-      match Arg_table.parse t.arg_spec command_line with
+    let name_table =
+      match Name_table.parse t.arg_spec command_line with
       | Ok x -> x
       | Error e -> raise (Error.Parse_error.E e)
     in
-    t.arg_compute arg_table
+    t.arg_compute name_table
 end
 
 module Command = struct
@@ -489,12 +560,16 @@ module Command = struct
         | None -> Error Error.Parse_error.Incomplete_command)
 
   let eval t command_line =
-    let { term; command_line } =
-      match traverse t command_line with
-      | Ok x -> x
-      | Error e -> raise (Error.Parse_error.E e)
-    in
-    Term.eval term command_line
+    try
+      let { term; command_line } =
+        match traverse t command_line with
+        | Ok x -> x
+        | Error e -> raise (Error.Parse_error.E e)
+      in
+      Term.eval term command_line
+    with Error.Parse_error.E e ->
+      Printf.eprintf "%s" (Error.Parse_error.to_string e);
+      exit Error.Parse_error.exit_code
 
   let run t = Command_line.from_env () |> eval t
 end
