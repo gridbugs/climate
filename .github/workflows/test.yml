@@ -29,6 +29,6 @@ jobs:
     - name: Set-up OCaml
       uses: ocaml/setup-ocaml@v2
       with:
-        ocaml-compiler: 4.14.2
+        ocaml-compiler: 4.14.1
     - run: opam install ppx_inline_test ppx_expect
     - run: opam exec -- dune test
