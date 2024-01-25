@@ -9,6 +9,12 @@ module Result : sig
     type ('a, 'error) t = ('a, 'error) result list
 
     val all : ('a, 'error) t -> ('a list, 'error) result
+
+    val fold_left
+      :  f:('acc -> 'a -> ('acc, 'error) result)
+      -> init:'acc
+      -> 'a list
+      -> ('acc, 'error) result
   end
 
   module O : sig

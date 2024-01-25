@@ -41,6 +41,9 @@ module Term : sig
       least one name. *)
   type names := string nonempty_list
 
+  (** A parser that ignores the command line and always yields the same value *)
+  val const : 'a -> 'a t
+
   (** A named argument that may appear multiple times on the command line. *)
   val opt_multi : names -> 'a conv -> 'a list t
 
@@ -92,6 +95,20 @@ module Command : sig
 
   (** Run the command line parser returning its result. *)
   val run : 'a t -> 'a
+
+  module For_test : sig
+    val eval : 'a t -> string list -> 'a
+  end
+end
+
+module Error : sig
+  module Parse_error : sig
+    type t
+
+    exception E of t
+
+    val to_string : t -> string
+  end
 end
 
 module For_test : module type of For_test

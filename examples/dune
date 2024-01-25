@@ -12,3 +12,8 @@
  (names op)
  (libraries climate)
  (modules op))
+
+(executables
+ (names group)
+ (libraries climate)
+ (modules group))

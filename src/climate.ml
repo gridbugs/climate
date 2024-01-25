@@ -34,6 +34,7 @@ module Error = struct
           }
       | No_such_name of Name.t
       | Name_would_begin_with_dash of string
+      | Short_name_would_be_dash of { entire_short_sequence : string }
       | Short_name_used_with_dash_dash of Name.t
       | Pos_req_missing of int
       | Opt_req_missing of Names.t
@@ -45,49 +46,57 @@ module Error = struct
           { locator : [ `Named of Name.t | `Positional of int ]
           ; message : string
           }
+      | Too_many_positional_arguments of { max : int }
 
     exception E of t
 
     let to_string = function
       | Opt_lacks_arg name ->
-        sprintf "Option %s lacks argument." (Name.to_string_with_dashes name)
+        sprintf "Named argument %S lacks value." (Name.to_string_with_dashes name)
       | Flag_has_arg { name; value } ->
         sprintf
-          "Flag %s does not take an argument but was passed %S"
+          "Flag %s does not take an value but was passed %S"
           (Name.to_string_with_dashes name)
           value
       | Opt_used_in_non_last_position_of_short_name_sequence { name; short_sequence } ->
         sprintf
-          "Option %s requires an argument but appears in a sequence of short names \
+          "Option %S requires an argument but appears in a sequence of short names \
            \"-%s\" in a non-final position. When passing multiple short names in a \
            sequence only the final one may take an argument."
           (Name.to_string_with_dashes name)
           short_sequence
-      | No_such_name name -> sprintf "Unknown name %S" (Name.to_string_with_dashes name)
+      | No_such_name name ->
+        sprintf "Unknown argument name: %s" (Name.to_string_with_dashes name)
       | Name_would_begin_with_dash string ->
         sprintf "The term %S is invalid as it begins with three dashes." string
+      | Short_name_would_be_dash { entire_short_sequence } ->
+        sprintf
+          "Encountered dash while parsing sequence of short names \"-%s\". Each \
+           character in a sequence of short names is interpreted as a short name, but \
+           dashes may not be used as short names."
+          entire_short_sequence
       | Short_name_used_with_dash_dash name ->
         sprintf
           "Single-character names must only be specified with a single dash. \"--%s\" is \
-           not allowed as it uses two dashes."
+           not allowed as it has two dashes."
           (Name.to_string name)
       | Pos_req_missing i ->
         sprintf "Missing required positional argument at position %d." i
       | Opt_req_missing names ->
-        sprintf "Missing required option %s" (Names.to_string_hum names)
+        sprintf "Missing required named argument: %s" (Names.to_string_hum names)
       | Opt_appeared_multiple_times (names, n) ->
         sprintf
-          "The option %s was passed %d times but may only appear at most once."
+          "The option %S was passed %d times but may only appear at most once."
           (Names.to_string_hum names)
           n
       | Opt_req_appeared_multiple_times (names, n) ->
         sprintf
-          "The option %s was passed %d times but must be passed exactly once."
+          "The option %S was passed %d times but must be passed exactly once."
           (Names.to_string_hum names)
           n
       | Flag_appeared_multiple_times (names, n) ->
         sprintf
-          "The flag %s was passed %d times but must may only appear at most once."
+          "The flag %S was passed %d times but must may only appear at most once."
           (Names.to_string_hum names)
           n
       | Incomplete_command ->
@@ -96,10 +105,14 @@ module Error = struct
       | Conv_failed { locator; message } ->
         let locator_string =
           match locator with
-          | `Named name -> sprintf "the argument to %s" (Name.to_string_with_dashes name)
+          | `Named name -> sprintf "the argument to %S" (Name.to_string_with_dashes name)
           | `Positional i -> sprintf "the argument at position %d" i
         in
         sprintf "Failed to parse %s: %s" locator_string message
+      | Too_many_positional_arguments { max } ->
+        sprintf
+          "Too many positional arguments. At most %d positional arguments may be passed."
+          max
     ;;
 
     let exit_code = 124
@@ -113,6 +126,7 @@ module Error = struct
       | Negative_position of int
       | Duplicate_enum_names of string list
       | No_such_enum_value of { valid_names : string list }
+      | Gap_in_positional_argument_range of int
 
     exception E of t
   end
@@ -129,8 +143,14 @@ module Error = struct
   end
 end
 
-module Name_table = struct
-  module Spec = struct
+let name_of_string_exn string =
+  match Name.of_string string with
+  | Ok name -> name
+  | Error e -> raise Error.Spec_error.(E (Invalid_name (string, e)))
+;;
+
+module Spec = struct
+  module Named = struct
     type arg_info = { has_arg : bool }
     type t = arg_info Name.Map.t
 
@@ -155,6 +175,85 @@ module Name_table = struct
     ;;
   end
 
+  module Positional = struct
+    (* Keeps track of which indices of positional argument have parsers registered *)
+    type t =
+      { all_above_inclusive : int option
+      ; other : Int.Set.t
+      }
+
+    let empty = { all_above_inclusive = None; other = Int.Set.empty }
+    let add_index t index = { t with other = Int.Set.add index t.other }
+
+    let add_all_above_inclusive t index =
+      match t.all_above_inclusive with
+      | Some x when x < index -> t
+      | _ -> { t with all_above_inclusive = Some index }
+    ;;
+
+    let add_all_below_exclusive t index =
+      let other =
+        Seq.init index Fun.id |> Seq.fold_left (fun acc i -> Int.Set.add i acc) t.other
+      in
+      { t with other }
+    ;;
+
+    let merge x y =
+      let other = Int.Set.union x.other y.other in
+      let all_above_inclusive =
+        match x.all_above_inclusive, y.all_above_inclusive with
+        | None, None -> None
+        | Some a, None | None, Some a -> Some a
+        | Some x, Some y -> Some (Int.min x y)
+      in
+      { all_above_inclusive; other }
+    ;;
+
+    let index i = add_index empty i
+    let all_above_inclusive i = add_all_above_inclusive empty i
+    let all_below_exclusive i = add_all_below_exclusive empty i
+
+    let validate_no_gaps { all_above_inclusive; other } =
+      let set_to_validate =
+        match all_above_inclusive with
+        | Some i -> Int.Set.add i other
+        | None -> other
+      in
+      match Int.Set.max_elt_opt set_to_validate with
+      | None -> Ok ()
+      | Some max ->
+        let gap =
+          Seq.init max Fun.id |> Seq.find (fun i -> not (Int.Set.mem i set_to_validate))
+        in
+        (match gap with
+         | Some i -> Error (Error.Spec_error.Gap_in_positional_argument_range i)
+         | None -> Ok ())
+    ;;
+
+    let arg_count { all_above_inclusive; other } =
+      match all_above_inclusive with
+      | Some _ -> `Unlimited
+      | None -> `Limited (Int.Set.cardinal other)
+    ;;
+  end
+
+  type t =
+    { named : Named.t
+    ; positional : Positional.t
+    }
+
+  let merge x y =
+    { named = Named.merge x.named y.named
+    ; positional = Positional.merge x.positional y.positional
+    }
+  ;;
+
+  let named named = { named; positional = Positional.empty }
+  let positional positional = { named = Named.empty; positional }
+  let empty = { named = Named.empty; positional = Positional.empty }
+end
+
+module Arg_table = struct
   type t =
     { spec : Spec.t
     ; pos : string list
@@ -166,18 +265,18 @@ module Name_table = struct
   let get_pos t i = List.nth_opt t.pos i
 
   let get_flag_count t name =
-    match Name.Map.find t.spec name with
+    match Name.Map.find t.spec.named name with
     | None -> raise Error.(Implementation_error.E (No_such_name name))
-    | Some { Spec.has_arg = true } ->
+    | Some { Spec.Named.has_arg = true } ->
       raise Error.(Implementation_error.E (Not_a_flag name))
     | Some { has_arg = false } ->
       Name.Map.find t.flag_counts name |> Option.value ~default:0
   ;;
 
   let get_opts t name =
-    match Name.Map.find t.spec name with
+    match Name.Map.find t.spec.named name with
     | None -> raise Error.(Implementation_error.E (No_such_name name))
-    | Some { Spec.has_arg = false } ->
+    | Some { Spec.Named.has_arg = false } ->
       raise Error.(Implementation_error.E (Not_an_opt name))
     | Some { has_arg = true } -> Name.Map.find t.opts name |> Option.value ~default:[]
   ;;
@@ -213,22 +312,29 @@ module Name_table = struct
     }
   ;;
 
-  let add_pos t arg = { t with pos = arg :: t.pos }
+  let add_pos t arg =
+    let ret = { t with pos = arg :: t.pos } in
+    match Spec.Positional.arg_count t.spec.positional with
+    | `Unlimited -> Ok ret
+    | `Limited count ->
+      if List.length ret.pos > count
+      then Error (Error.Parse_error.Too_many_positional_arguments { max = count })
+      else Ok ret
+  ;;
 
   let reverse_lists t =
     { t with pos = List.rev t.pos; opts = Name.Map.map t.opts ~f:List.rev }
   ;;
 
-  let parse spec args =
+  let parse (spec : Spec.t) args =
     let rec parse_rec (acc : t) = function
       | [] -> Ok acc
       | "--" :: xs ->
         (* all arguments after a "--" argument are treated as positional *)
-        Ok (List.fold_left xs ~init:acc ~f:add_pos)
+        Result.List.fold_left xs ~init:acc ~f:add_pos
       | "-" :: xs ->
         (* a "-" on its own is treated as positional *)
-        let acc = add_pos acc "-" in
-        parse_rec acc xs
+        Result.bind (add_pos acc "-") ~f:(fun acc -> parse_rec acc xs)
       | x :: xs ->
         (match String.drop_prefix x ~prefix:"--" with
          | Some name_string ->
@@ -241,9 +347,9 @@ module Name_table = struct
                (match Name.kind name with
                 | `Short -> Error (Error.Parse_error.Short_name_used_with_dash_dash name)
                 | `Long ->
-                  (match Name.Map.find spec name with
+                  (match Name.Map.find spec.named name with
                    | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.has_arg = false } ->
+                   | Some { Spec.Named.has_arg = false } ->
                      Error (Error.Parse_error.Flag_has_arg { name; value })
                    | Some { has_arg = true } ->
                      let acc = add_opt acc ~name ~value in
@@ -253,9 +359,9 @@ module Name_table = struct
                (match Name.kind name with
                 | `Short -> Error (Error.Parse_error.Short_name_used_with_dash_dash name)
                 | `Long ->
-                  (match Name.Map.find spec name with
+                  (match Name.Map.find spec.named name with
                    | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.has_arg = false } ->
+                   | Some { Spec.Named.has_arg = false } ->
                      let acc = add_flag acc ~name in
                      parse_rec acc xs
                    | Some { has_arg = true } ->
@@ -265,44 +371,54 @@ module Name_table = struct
                         let acc = add_opt acc ~name ~value:x in
                         parse_rec acc xs))))
          | None ->
+           (* x doesn't begin with "--" *)
            (match String.drop_prefix x ~prefix:"-" with
             | Some short_sequence ->
               let rec loop acc rem_names =
                 match String.length rem_names with
                 | 1 ->
-                  let name = Name.of_string_exn rem_names in
-                  (match Name.Map.find spec name with
-                   | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.has_arg = false } ->
-                     let acc = add_flag acc ~name in
-                     parse_rec acc xs
-                   | Some { has_arg = true } ->
-                     (match xs with
-                      | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
-                      | x :: xs ->
-                        let acc = add_opt acc ~name ~value:x in
-                        parse_rec acc xs))
+                  (* This is the final char of the short sequence. *)
+                  (match Name.of_string rem_names with
+                   | Error Empty_name -> failwith "unreachable"
+                   | Error Begins_with_dash ->
+                     Error
+                       (Error.Parse_error.Short_name_would_be_dash
+                          { entire_short_sequence = short_sequence })
+                   | Ok name ->
+                     (match Name.Map.find spec.named name with
+                      | None -> Error (Error.Parse_error.No_such_name name)
+                      | Some { Spec.Named.has_arg = false } ->
+                        let acc = add_flag acc ~name in
+                        parse_rec acc xs
+                      | Some { has_arg = true } ->
+                        (match xs with
+                         | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
+                         | x :: xs ->
+                           let acc = add_opt acc ~name ~value:x in
+                           parse_rec acc xs)))
                 | n ->
                   assert (n > 1);
-                  let name =
-                    String.get rem_names 1 |> String.make 1 |> Name.of_string_exn
-                  in
-                  (match Name.Map.find spec name with
-                   | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.has_arg = true } ->
+                  (match String.get rem_names 0 |> String.make 1 |> Name.of_string with
+                   | Ok name ->
+                     (match Name.Map.find spec.named name with
+                      | None -> Error (Error.Parse_error.No_such_name name)
+                      | Some { Spec.Named.has_arg = true } ->
+                        Error
+                          (Error.Parse_error
+                           .Opt_used_in_non_last_position_of_short_name_sequence
+                             { name; short_sequence })
+                      | Some { has_arg = false } ->
+                        let acc = add_flag acc ~name in
+                        let rest = String.sub rem_names ~pos:1 ~len:(n - 1) in
+                        loop acc rest)
+                   | Error Empty_name -> failwith "unreachable"
+                   | Error Begins_with_dash ->
                      Error
-                       (Error.Parse_error
-                        .Opt_used_in_non_last_position_of_short_name_sequence
-                          { name; short_sequence })
-                   | Some { has_arg = false } ->
-                     let acc = add_flag acc ~name in
-                     let rest = String.sub rem_names ~pos:1 ~len:(n - 1) in
-                     loop acc rest)
+                       (Error.Parse_error.Short_name_would_be_dash
+                          { entire_short_sequence = short_sequence }))
               in
               loop acc short_sequence
-            | None ->
-              let acc = add_pos acc x in
-              parse_rec acc xs))
+            | None -> Result.bind (add_pos acc x) ~f:(fun acc -> parse_rec acc xs)))
     in
     parse_rec (empty spec) args |> Result.map ~f:reverse_lists
   ;;
@@ -389,10 +505,10 @@ module Term = struct
     { parse; print }
   ;;
 
-  type 'a arg_compute = Name_table.t -> 'a
+  type 'a arg_compute = Arg_table.t -> 'a
 
   type 'a t =
-    { arg_spec : Name_table.Spec.t
+    { arg_spec : Spec.t
     ; arg_compute : 'a arg_compute
     }
 
@@ -403,7 +519,7 @@ module Term = struct
   ;;
 
   let both x y =
-    { arg_spec = Name_table.Spec.merge x.arg_spec y.arg_spec
+    { arg_spec = Spec.merge x.arg_spec y.arg_spec
     ; arg_compute =
         (fun name_table ->
           let x_value = x.arg_compute name_table in
@@ -425,12 +541,14 @@ module Term = struct
       | Error invalid -> raise Error.Spec_error.(E (Invalid_name (string, invalid))))
   ;;
 
+  let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
+
   let opt_multi names conv =
     let names = names_of_strings names in
-    { arg_spec = Name_table.Spec.opt names
+    { arg_spec = Spec.named (Spec.Named.opt names)
     ; arg_compute =
         (fun name_table ->
-          Name_table.get_opts_names_by_name name_table names
+          Arg_table.get_opts_names_by_name name_table names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
             | Ok value -> value
@@ -463,8 +581,8 @@ module Term = struct
 
   let flag_count names =
     let names = names_of_strings names in
-    { arg_spec = Name_table.Spec.flag names
-    ; arg_compute = (fun name_table -> Name_table.get_flag_count_names name_table names)
+    { arg_spec = Spec.named (Spec.Named.flag names)
+    ; arg_compute = (fun name_table -> Arg_table.get_flag_count_names name_table names)
     }
   ;;
 
@@ -481,22 +599,19 @@ module Term = struct
   let pos i conv =
     let i =
       match Nonnegative_int.of_int i with
-      | Some i -> i
+      | Some _ -> i
       | None -> raise Error.Spec_error.(E (Negative_position i))
     in
-    { arg_spec = Name_table.Spec.empty
+    { arg_spec = Spec.positional (Spec.Positional.index i)
     ; arg_compute =
         (fun name_table ->
-          Name_table.get_pos name_table (Nonnegative_int.to_int i)
+          Arg_table.get_pos name_table i
           |> Option.map ~f:(fun x ->
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
               raise
-                Error.Parse_error.(
-                  E
-                    (Conv_failed
-                       { locator = `Positional (Nonnegative_int.to_int i); message }))))
+                Error.Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
     }
   ;;
 
@@ -508,10 +623,10 @@ module Term = struct
   ;;
 
   let pos_left i conv =
-    { arg_spec = Name_table.Spec.empty
+    { arg_spec = Spec.positional (Spec.Positional.all_below_exclusive i)
     ; arg_compute =
         (fun name_table ->
-          let left, _ = List.split_n (Name_table.get_pos_all name_table) i in
+          let left, _ = List.split_n (Arg_table.get_pos_all name_table) i in
           List.mapi left ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -522,10 +637,10 @@ module Term = struct
   ;;
 
   let pos_right i conv =
-    { arg_spec = Name_table.Spec.empty
+    { arg_spec = Spec.positional (Spec.Positional.all_above_inclusive i)
     ; arg_compute =
         (fun name_table ->
-          let _, right = List.split_n (Name_table.get_pos_all name_table) i in
+          let _, right = List.split_n (Arg_table.get_pos_all name_table) i in
           List.mapi right ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -538,25 +653,40 @@ module Term = struct
   let pos_all conv = pos_right 0 conv
 
   let eval t command_line =
-    let name_table =
-      match Name_table.parse t.arg_spec command_line with
+    let arg_table =
+      match Arg_table.parse t.arg_spec command_line with
       | Ok x -> x
       | Error e -> raise (Error.Parse_error.E e)
     in
-    t.arg_compute name_table
+    t.arg_compute arg_table
   ;;
+
+  let validate t = Spec.Positional.validate_no_gaps t.arg_spec.positional |> Result.get_ok
 end
 
 module Command = struct
   type 'a t =
     | Singleton of 'a Term.t
     | Group of
-        { children : (string * 'a t) list
+        { children : (Name.t * 'a t) list
         ; default_term : 'a Term.t option
         }
 
-  let singleton term = Singleton term
-  let group ?default_term children = Group { children; default_term }
+  let singleton term =
+    Term.validate term;
+    Singleton term
+  ;;
+
+  let group ?default_term children =
+    (match default_term with
+     | Some default_term -> Term.validate default_term
+     | None -> ());
+    let children =
+      List.map children ~f:(fun (name_string, command) ->
+        name_of_string_exn name_string, command)
+    in
+    Group { children; default_term }
+  ;;
 
   type 'a traverse =
     { term : 'a Term.t
@@ -569,7 +699,7 @@ module Command = struct
     | Group { children; default_term }, x :: xs ->
       let subcommand =
         List.find_map children ~f:(fun (name, command) ->
-          if String.equal name x then Some command else None)
+          if String.equal (Name.to_string name) x then Some command else None)
       in
       (match subcommand with
        | Some subcommand -> traverse subcommand xs
@@ -584,20 +714,24 @@ module Command = struct
   ;;
 
   let eval t command_line =
-    try
-      let { term; command_line } =
-        match traverse t command_line with
-        | Ok x -> x
-        | Error e -> raise (Error.Parse_error.E e)
-      in
-      Term.eval term command_line
-    with
+    let { term; command_line } =
+      match traverse t command_line with
+      | Ok x -> x
+      | Error e -> raise (Error.Parse_error.E e)
+    in
+    Term.eval term command_line
+  ;;
+
+  let run t =
+    try Command_line.from_env () |> eval t with
     | Error.Parse_error.E e ->
       Printf.eprintf "%s" (Error.Parse_error.to_string e);
       exit Error.Parse_error.exit_code
   ;;
 
-  let run t = Command_line.from_env () |> eval t
+  module For_test = struct
+    let eval = eval
+  end
 end
 
 module For_test = For_test

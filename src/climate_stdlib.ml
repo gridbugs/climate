@@ -22,6 +22,11 @@ module Result = struct
       | Ok x :: xs -> map (all xs) ~f:(fun xs -> x :: xs)
       | Error error :: _xs -> Error error
     ;;
+
+    let rec fold_left ~f ~init = function
+      | [] -> Ok init
+      | x :: xs -> bind (fold_left ~f ~init xs) ~f:(fun acc -> f acc x)
+    ;;
   end
 
   module O = struct
