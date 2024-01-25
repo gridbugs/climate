@@ -8,7 +8,11 @@ module Result = struct
   let both a b =
     match a with
     | Error e -> Error e
-    | Ok a -> ( match b with Error e -> Error e | Ok b -> Ok (a, b))
+    | Ok a ->
+      (match b with
+       | Error e -> Error e
+       | Ok b -> Ok (a, b))
+  ;;
 
   module List = struct
     type ('a, 'error) t = ('a, 'error) result list
@@ -17,6 +21,7 @@ module Result = struct
       | [] -> Ok []
       | Ok x :: xs -> map (all xs) ~f:(fun xs -> x :: xs)
       | Error error :: _xs -> Error error
+    ;;
   end
 
   module O = struct
@@ -44,6 +49,18 @@ module List = struct
       | x :: xs -> if contains xs x then Some x else loop xs
     in
     loop t
+  ;;
+
+  let rec split_n t n =
+    match t with
+    | [] -> [], []
+    | x :: xs ->
+      if n <= 0
+      then [], t
+      else (
+        let l, r = split_n xs (n - 1) in
+        x :: l, r)
+  ;;
 end
 
 module Map = struct
@@ -59,10 +76,10 @@ module Map = struct
 
   module Make (Key : OrderedType) : S with type key = Key.t = struct
     include MoreLabels.Map.Make (struct
-      type t = Key.t
+        type t = Key.t
 
-      let compare = Key.compare
-    end)
+        let compare = Key.compare
+      end)
 
     let find key t = find_opt t key
     let set t k v = add ~key:k ~data:v t
@@ -70,19 +87,24 @@ module Map = struct
     let of_list =
       let rec loop acc = function
         | [] -> Result.Ok acc
-        | (k, v) :: l -> (
-            match find acc k with
-            | None -> loop (set acc k v) l
-            | Some v_old -> Error (k, v_old, v))
+        | (k, v) :: l ->
+          (match find acc k with
+           | None -> loop (set acc k v) l
+           | Some v_old -> Error (k, v_old, v))
       in
       fun l -> loop empty l
+    ;;
   end
 end
 
 module Nonempty_list = struct
   type 'a t = ( :: ) of ('a * 'a list)
 
-  let of_list = function [] -> None | x :: xs -> Some (x :: xs)
+  let of_list = function
+    | [] -> None
+    | x :: xs -> Some (x :: xs)
+  ;;
+
   let to_list (x :: xs) = List.(x :: xs)
   let map (x :: xs) ~f = f x :: List.map xs ~f
 end
@@ -100,24 +122,29 @@ module String = struct
   let lsplit2 s ~on =
     match index_opt s on with
     | None -> None
-    | Some i ->
-        Some (sub s ~pos:0 ~len:i, sub s ~pos:(i + 1) ~len:(length s - i - 1))
+    | Some i -> Some (sub s ~pos:0 ~len:i, sub s ~pos:(i + 1) ~len:(length s - i - 1))
+  ;;
 
   let is_empty s = String.length s == 0
 
   let rec check_prefix s ~prefix len i =
     i = len || (s.[i] = prefix.[i] && check_prefix s ~prefix len (i + 1))
+  ;;
 
   let is_prefix s ~prefix =
     let len = length s in
     let prefix_len = length prefix in
     len >= prefix_len && check_prefix s ~prefix prefix_len 0
+  ;;
 
   let drop_prefix s ~prefix =
-    if is_prefix s ~prefix then
-      if length s = length prefix then Some ""
+    if is_prefix s ~prefix
+    then
+      if length s = length prefix
+      then Some ""
       else Some (sub s ~pos:(length prefix) ~len:(length s - length prefix))
     else None
+  ;;
 
   module Set = Set.Make (String)
   module Map = Map.Make (String)

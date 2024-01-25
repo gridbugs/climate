@@ -30,6 +30,7 @@ module List : sig
   include module type of StdLabels.List
 
   val find_duplicate : eq:('a -> 'a -> bool) -> 'a t -> 'a option
+  val split_n : 'a t -> int -> 'a t * 'a t
 end
 
 module Map : sig

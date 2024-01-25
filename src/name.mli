@@ -3,7 +3,9 @@ open! Import
 type t
 
 module Invalid : sig
-  type t = Empty_name | Begins_with_dash
+  type t =
+    | Empty_name
+    | Begins_with_dash
 end
 
 val of_string : string -> (t, Invalid.t) result

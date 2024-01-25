@@ -1,3 +1,14 @@
 (executables
  (names sum)
- (libraries climate))
+ (libraries climate)
+ (modules sum))
+
+(executables
+ (names sum2)
+ (libraries climate)
+ (modules sum2))
+
+(executables
+ (names op)
+ (libraries climate)
+ (modules op))
