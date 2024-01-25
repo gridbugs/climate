@@ -1,5 +1,7 @@
 # Climate
 
+[![test status](https://github.com/gridbugs/climate/actions/workflows/test.yml/badge.svg)](https://github.com/gridbugs/climate/actions/workflows/test.yml)
+
 A boring command-line parser for OCaml.
 
 ## Manual
