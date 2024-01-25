@@ -300,7 +300,12 @@ module Arg_table = struct
   let empty spec = { spec; pos = []; flag_counts = Name.Map.empty; opts = Name.Map.empty }
 
   let add_opt t ~name ~value =
-    { t with opts = Name.Map.add_to_list t.opts ~key:name ~data:value }
+    { t with
+      opts =
+        Name.Map.update t.opts ~key:name ~f:(function
+          | None -> Some [ value ]
+          | Some values -> Some (value :: values))
+    }
   ;;
 
   let add_flag t ~name =
