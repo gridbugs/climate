@@ -121,9 +121,7 @@ let%expect_test "value conversion failed" =
   let term = Term.(opt [ "f" ] int) in
   let command = Command.singleton term in
   eval_and_print_parse_error command [ "-f"; "42" ];
-  [%expect
-    {| |}];
+  [%expect {| |}];
   eval_and_print_parse_error command [ "-f"; "x" ];
-  [%expect
-    {| Failed to parse the argument to "-f": invalid value: "x" (not an int) |}]
+  [%expect {| Failed to parse the argument to "-f": invalid value: "x" (not an int) |}]
 ;;

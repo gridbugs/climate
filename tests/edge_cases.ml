@@ -32,6 +32,7 @@ let%expect_test "passing a value beginning with '-' to an argument" =
   run command [ "-f"; "-" ];
   [%expect {| - |}];
   run command [ "-f-" ];
-  [%expect {|
+  [%expect
+    {|
     Option "-f" requires an argument but appears in a sequence of short names "-f-" in a non-final position. When passing multiple short names in a sequence only the final one may take an argument. |}]
 ;;

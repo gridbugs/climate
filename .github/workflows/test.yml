@@ -1,0 +1,34 @@
+name: test
+on:
+  push:
+    branches:
+    - '*'
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set-up OCaml
+      uses: ocaml/setup-ocaml@v2
+      with:
+        ocaml-compiler: 4.14.1
+        opam-pin: false
+        opam-depext: false
+    - uses: actions/checkout@v3
+    - run: opam switch create . --no-install
+    - run: opam install -y dune ocamlformat
+    - run: opam exec -- dune fmt
+
+  build-and-run-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: 'Run "apt update" so setup-ocaml can install depexts'
+      run: |
+        sudo apt update
+    - name: Set-up OCaml
+      uses: ocaml/setup-ocaml@v2
+      with:
+        ocaml-compiler: 4.14.2
+    - run: opam install ppx_inline_test ppx_expect
+    - run: opam exec -- dune test
