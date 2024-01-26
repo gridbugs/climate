@@ -6,14 +6,28 @@ module Invalid = struct
   type t =
     | Empty_name
     | Begins_with_dash
+    | Invalid_char of char
 end
 
+let invalid_chars = [ '=' ]
+let find_invalid_char string = List.find_opt invalid_chars ~f:(String.contains string)
+let is_invalid_char char = List.exists invalid_chars ~f:(( = ) char)
+
+let check_invalid_char string =
+  match find_invalid_char string with
+  | Some invalid_char -> Error (Invalid.Invalid_char invalid_char)
+  | None -> Ok ()
+;;
+
 let of_string string =
+  let open Result.O in
   if String.is_empty string
   then Error Invalid.Empty_name
   else if String.starts_with string ~prefix:"-"
-  then Error Invalid.Begins_with_dash
-  else Ok string
+  then Error Begins_with_dash
+  else
+    let+ () = check_invalid_char string in
+    string
 ;;
 
 let of_string_exn string =
@@ -48,11 +62,17 @@ let chip_short_name_off_string string =
   else (
     match String.length string with
     | 0 -> Error Invalid.Empty_name
-    | 1 -> Ok (string, "")
+    | 1 ->
+      let char = String.get string 0 in
+      if is_invalid_char char then Error (Invalid_char char) else Ok (string, "")
     | n ->
-      let name = String.get string 0 |> String.make 1 in
-      let rest = String.sub string ~pos:1 ~len:(n - 1) in
-      Ok (name, rest))
+      let char = String.get string 0 in
+      if is_invalid_char char
+      then Error (Invalid_char char)
+      else (
+        let name = String.make 1 char in
+        let rest = String.sub string ~pos:1 ~len:(n - 1) in
+        Ok (name, rest)))
 ;;
 
 module Set = Set.Make (String)

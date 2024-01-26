@@ -1,9 +1,9 @@
 open Climate
-open Term.O
 
 let term name =
-  let+ x = Term.(opt_req [ "x" ] string)
-  and+ y = Term.(opt_req [ "y" ] string) in
+  let open Arg_parser in
+  let+ x = named_req [ "x" ] string
+  and+ y = named_req [ "y" ] string in
   print_endline (Printf.sprintf "%s %s %s" name x y)
 ;;
 

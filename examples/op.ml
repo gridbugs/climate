@@ -1,10 +1,10 @@
 open Stdlib.StdLabels
 open Climate
-open Term.O
 
 let main =
-  let+ op = Term.(pos_req 0 string)
-  and+ args = Term.(pos_right 1 int) in
+  let open Arg_parser in
+  let+ op = pos_req 0 string
+  and+ args = pos_right 1 int in
   let init, op =
     match op with
     | "+" -> 0, ( + )

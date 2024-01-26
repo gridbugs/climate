@@ -1,13 +1,21 @@
-module Term : sig
-  type 'a parse = string -> ('a, [ `Msg of string ]) result
-  type 'a print = Format.formatter -> 'a -> unit
+(** A DSL for declaratively describing a program's command-line arguments *)
+module Arg_parser : sig
+  module Conv : sig
+    type 'a parse = string -> ('a, [ `Msg of string ]) result
+    type 'a print = Format.formatter -> 'a -> unit
+
+    type 'a t =
+      { parse : 'a parse
+      ; print : 'a print
+      }
+  end
 
   (** Knows how to interpret strings on the command line as a particular type
       and how to format values of said type as strings. Define a custom [_ conv]
       value to implement a term of a custom type. *)
-  type 'a conv =
-    { parse : 'a parse
-    ; print : 'a print
+  type 'a conv = 'a Conv.t =
+    { parse : 'a Conv.parse
+    ; print : 'a Conv.print
     }
 
   val string : string conv
@@ -26,12 +34,9 @@ module Term : sig
 
   val map : 'a t -> f:('a -> 'b) -> 'b t
   val both : 'a t -> 'b t -> ('a * 'b) t
-
-  module O : sig
-    val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
-    val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
-    val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
-  end
+  val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
+  val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
+  val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
 
   type 'a nonempty_list = ( :: ) of ('a * 'a list)
 
@@ -45,13 +50,13 @@ module Term : sig
   val const : 'a -> 'a t
 
   (** A named argument that may appear multiple times on the command line. *)
-  val opt_multi : names -> 'a conv -> 'a list t
+  val named_multi : names -> 'a conv -> 'a list t
 
   (** A named argument that may appear at most once on the command line. *)
-  val opt : names -> 'a conv -> 'a option t
+  val named_opt : names -> 'a conv -> 'a option t
 
   (** A named argument that must appear exactly once on the command line. *)
-  val opt_req : names -> 'a conv -> 'a t
+  val named_req : names -> 'a conv -> 'a t
 
   (** A flag that may appear multiple times on the command line.
       Evaluates to the number of times the flag appeared. *)
@@ -62,7 +67,7 @@ module Term : sig
 
   (** [pos i conv] declares an optional anonymous positional argument at position
       [i] (starting at 0). *)
-  val pos : int -> 'a conv -> 'a option t
+  val pos_opt : int -> 'a conv -> 'a option t
 
   (** [pos i conv] declares a required anonymous positional argument at position
       [i] (starting at 0). *)
@@ -83,32 +88,46 @@ end
 module Command : sig
   type 'a t
 
-  (** Declare a single command. *)
-  val singleton : 'a Term.t -> 'a t
+  (** Declare a single command. Performs some checks that the parser is
+      well-formed and raises a [Spec_error.E] if it's invalid. *)
+  val singleton : 'a Arg_parser.t -> 'a t
 
   (** [group children] returns a command with a hierarchy of subcommands, the
       leaves of which will be either singletons or empty groups (groups with an
       empty list of children). If the [default_term] argument is passed then
       sequences of subcommands may terminating with this command and will be
-      passed with that argument. *)
-  val group : ?default_term:'a Term.t -> (string * 'a t) list -> 'a t
+      passed with that argument. Performs some checks that each parser is
+      well-formed and raises a [Spec_error.E] if an invalid parser is found.*)
+  val group : ?default_term:'a Arg_parser.t -> (string * 'a t) list -> 'a t
 
-  (** Run the command line parser returning its result. *)
+  (** Run the command line parser on a given list of terms. Raises a
+      [Parse_error.E] if the command line is invalid. *)
+  val eval : 'a t -> string list -> 'a
+
+  (** Run the command line parser returning its result. Parse errors are
+      handled by printing an error message to stderr and exiting. *)
   val run : 'a t -> 'a
-
-  module For_test : sig
-    val eval : 'a t -> string list -> 'a
-  end
 end
 
-module Error : sig
-  module Parse_error : sig
-    type t
+module Parse_error : sig
+  (** Errors encountered while interpreting command-line arguments. This
+      indicates that the user of a CLI program made with this library has
+      passed invalid command-line arguments to the program. *)
+  type t
 
-    exception E of t
+  exception E of t
 
-    val to_string : t -> string
-  end
+  val to_string : t -> string
+end
+
+module Spec_error : sig
+  (* Errors that indicate that a client of this library has attempted to
+     create an invalid argument spec. *)
+  type t
+
+  exception E of t
+
+  val to_string : t -> string
 end
 
 module For_test : module type of For_test

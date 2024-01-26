@@ -17,125 +17,168 @@ module Command_line = struct
   let from_env () = Sys.argv |> Array.to_list |> List.tl
 end
 
-module Error = struct
-  module Parse_error = struct
-    (* Errors encountered while interpreting command-line arguments. This
-       indicates that the user of a CLI program made with this library has
-       passed invalid command-line arguments to the program. *)
-    type t =
-      | Opt_lacks_arg of Name.t
-      | Flag_has_arg of
-          { name : Name.t
-          ; value : string
-          }
-      | No_such_name of Name.t
-      | Name_would_begin_with_dash of string
-      | Short_name_would_be_dash of { entire_short_sequence : string }
-      | Short_name_used_with_dash_dash of Name.t
-      | Pos_req_missing of int
-      | Opt_req_missing of Names.t
-      | Opt_appeared_multiple_times of (Names.t * int)
-      | Opt_req_appeared_multiple_times of (Names.t * int)
-      | Flag_appeared_multiple_times of (Names.t * int)
-      | Incomplete_command
-      | Conv_failed of
-          { locator : [ `Named of Name.t | `Positional of int ]
-          ; message : string
-          }
-      | Too_many_positional_arguments of { max : int }
+module Parse_error = struct
+  type t =
+    | Arg_lacks_param of Name.t
+    | Flag_has_param of
+        { name : Name.t
+        ; value : string
+        }
+    | No_such_arg of Name.t
+    | Name_would_begin_with_dash of string
+    | Short_name_would_be_dash of { entire_short_sequence : string }
+    | Short_name_used_with_dash_dash of Name.t
+    | Pos_req_missing of int
+    | Named_req_missing of Names.t
+    | Named_opt_appeared_multiple_times of (Names.t * int)
+    | Named_req_appeared_multiple_times of (Names.t * int)
+    | Flag_appeared_multiple_times of (Names.t * int)
+    | Incomplete_command
+    | Conv_failed of
+        { locator : [ `Named of Name.t | `Positional of int ]
+        ; message : string
+        }
+    | Too_many_positional_arguments of { max : int }
+    | Invalid_char_in_argument_name of
+        { attempted_argument_name : string
+        ; invalid_char : char
+        }
 
-    exception E of t
+  exception E of t
 
-    let to_string = function
-      | Opt_lacks_arg name ->
-        sprintf "Named argument %S lacks value." (Name.to_string_with_dashes name)
-      | Flag_has_arg { name; value } ->
-        sprintf
-          "Flag %s does not take an value but was passed %S"
-          (Name.to_string_with_dashes name)
-          value
-      | No_such_name name ->
-        sprintf "Unknown argument name: %s" (Name.to_string_with_dashes name)
-      | Name_would_begin_with_dash string ->
-        sprintf "The term %S is invalid as it begins with three dashes." string
-      | Short_name_would_be_dash { entire_short_sequence } ->
-        sprintf
-          "Encountered dash while parsing sequence of short names \"-%s\". Each \
-           character in a sequence of short names is interpreted as a short name, but \
-           dashes may not be used as short names."
-          entire_short_sequence
-      | Short_name_used_with_dash_dash name ->
-        sprintf
-          "Single-character names must only be specified with a single dash. \"--%s\" is \
-           not allowed as it has two dashes."
-          (Name.to_string name)
-      | Pos_req_missing i ->
-        sprintf "Missing required positional argument at position %d." i
-      | Opt_req_missing names ->
-        sprintf "Missing required named argument: %s" (Names.to_string_hum names)
-      | Opt_appeared_multiple_times (names, n) ->
-        sprintf
-          "The option %S was passed %d times but may only appear at most once."
-          (Names.to_string_hum names)
-          n
-      | Opt_req_appeared_multiple_times (names, n) ->
-        sprintf
-          "The option %S was passed %d times but must be passed exactly once."
-          (Names.to_string_hum names)
-          n
-      | Flag_appeared_multiple_times (names, n) ->
-        sprintf
-          "The flag %S was passed %d times but must may only appear at most once."
-          (Names.to_string_hum names)
-          n
-      | Incomplete_command ->
-        "The command is incomplete. Additional subcommands are required to form a \
-         command."
-      | Conv_failed { locator; message } ->
-        let locator_string =
-          match locator with
-          | `Named name -> sprintf "the argument to %S" (Name.to_string_with_dashes name)
-          | `Positional i -> sprintf "the argument at position %d" i
-        in
-        sprintf "Failed to parse %s: %s" locator_string message
-      | Too_many_positional_arguments { max } ->
-        sprintf
-          "Too many positional arguments. At most %d positional arguments may be passed."
-          max
-    ;;
+  let to_string = function
+    | Arg_lacks_param name ->
+      sprintf "Named argument %S lacks parameter." (Name.to_string_with_dashes name)
+    | Flag_has_param { name; value } ->
+      sprintf
+        "Flag %s does not take a parameter but was passed: %S"
+        (Name.to_string_with_dashes name)
+        value
+    | No_such_arg name ->
+      sprintf "Unknown argument name: %s" (Name.to_string_with_dashes name)
+    | Name_would_begin_with_dash string ->
+      sprintf
+        "%S is not a valid argument specifier as it begins with 3 dashes. Only a single \
+         dash or two dashes may be used to denote an argument."
+        string
+    | Short_name_would_be_dash { entire_short_sequence } ->
+      sprintf
+        "Encountered dash while parsing sequence of short names \"-%s\". Each character \
+         in a sequence of short names is interpreted as a short name, but dashes may not \
+         be used as short names."
+        entire_short_sequence
+    | Short_name_used_with_dash_dash name ->
+      sprintf
+        "Single-character names must only be specified with a single dash. \"--%s\" is \
+         not allowed as it has two dashes but only one character."
+        (Name.to_string name)
+    | Pos_req_missing i ->
+      sprintf "Missing required positional argument at position %d." i
+    | Named_req_missing names ->
+      sprintf "Missing required named argument: %s" (Names.to_string_hum names)
+    | Named_opt_appeared_multiple_times (names, n) ->
+      sprintf
+        "The option %S was passed %d times but may only appear at most once."
+        (Names.to_string_hum names)
+        n
+    | Named_req_appeared_multiple_times (names, n) ->
+      sprintf
+        "The argument %S was passed %d times but must be passed exactly once."
+        (Names.to_string_hum names)
+        n
+    | Flag_appeared_multiple_times (names, n) ->
+      sprintf
+        "The flag %S was passed %d times but must may only appear at most once."
+        (Names.to_string_hum names)
+        n
+    | Incomplete_command ->
+      "The command is incomplete. Additional subcommands are required to form a command."
+    | Conv_failed { locator; message } ->
+      let locator_string =
+        match locator with
+        | `Named name -> sprintf "the argument to %S" (Name.to_string_with_dashes name)
+        | `Positional i -> sprintf "the argument at position %d" i
+      in
+      sprintf "Failed to parse %s: %s" locator_string message
+    | Too_many_positional_arguments { max } ->
+      sprintf
+        "Too many positional arguments. At most %d positional arguments may be passed."
+        max
+    | Invalid_char_in_argument_name { attempted_argument_name; invalid_char } ->
+      sprintf
+        "Invalid character %C in argument name %S"
+        invalid_char
+        attempted_argument_name
+  ;;
 
-    let exit_code = 124
-  end
+  let exit_code = 124
+end
 
-  module Spec_error = struct
-    (* Errors that indicate that a client of this library has attempted to create an invalid argument spec. *)
-    type t =
-      | Duplicate_name of Name.t
-      | Invalid_name of (string * Name.Invalid.t)
-      | Negative_position of int
-      | Duplicate_enum_names of string list
-      | No_such_enum_value of { valid_names : string list }
-      | Gap_in_positional_argument_range of int
+module Spec_error = struct
+  type t =
+    | Duplicate_name of Name.t
+    | Invalid_name of (string * Name.Invalid.t)
+    | Negative_position of int
+    | Duplicate_enum_names of string list
+    | No_such_enum_value of { valid_names : string list }
+    | Gap_in_positional_argument_range of int
 
-    exception E of t
-  end
+  exception E of t
 
-  module Implementation_error = struct
-    (* Errors in the implementation of a parser. These are exposed so clients
-       can implement custom parsers. *)
-    type t =
-      | No_such_name of Name.t
-      | Not_a_flag of Name.t
-      | Not_an_opt of Name.t
+  let to_string = function
+    | Duplicate_name name ->
+      sprintf
+        "The name %S is used in multiple arguments."
+        (Name.to_string_with_dashes name)
+    | Invalid_name (attempted_name, invalid) ->
+      let reason =
+        match invalid with
+        | Name.Invalid.Begins_with_dash -> "it begins with a dash"
+        | Empty_name -> "it is the empty string"
+        | Invalid_char char -> sprintf "it contains the character %C" char
+      in
+      sprintf
+        "Attempted to use %S as an argument name. %S is not a valid argument name \
+         because %s which is not allowed."
+        attempted_name
+        attempted_name
+        reason
+    | Negative_position i ->
+      sprintf "Attempted to declare positional argument with negative position: %d" i
+    | Duplicate_enum_names names ->
+      sprintf
+        "An enum was declared with duplicate names. The following names were duplicated: \
+         %s"
+        (String.concat ~sep:" " names)
+    | No_such_enum_value { valid_names } ->
+      sprintf
+        "Attempted to format an enum value as a string but the value does not appear in \
+         the enum declaration. Valid names for this enum are: %s"
+        (String.concat ~sep:" " valid_names)
+    | Gap_in_positional_argument_range i ->
+      sprintf
+        "Attempted to declare a parser with a gap in its positional arguments. No parser \
+         would interpret the argument at position %d but there is a parser for at least \
+         one argument at a higher position."
+        i
+  ;;
+end
 
-    exception E of t
-  end
+module Implementation_error = struct
+  (* Errors in the implementation of a parser. These are exposed so clients
+     can implement custom parsers. *)
+  type t =
+    | No_such_arg of Name.t
+    | Not_a_flag of Name.t
+    | Not_an_opt of Name.t
+
+  exception E of t
 end
 
 let name_of_string_exn string =
   match Name.of_string string with
   | Ok name -> name
-  | Error e -> raise Error.Spec_error.(E (Invalid_name (string, e)))
+  | Error e -> raise Spec_error.(E (Invalid_name (string, e)))
 ;;
 
 module Spec = struct
@@ -147,7 +190,7 @@ module Spec = struct
 
     let add t name ~has_arg =
       if Name.Map.mem name t
-      then raise Error.Spec_error.(E (Duplicate_name name))
+      then raise Spec_error.(E (Duplicate_name name))
       else Name.Map.add t ~key:name ~data:{ has_arg }
     ;;
 
@@ -202,6 +245,9 @@ module Spec = struct
     let all_above_inclusive i = add_all_above_inclusive empty i
     let all_below_exclusive i = add_all_below_exclusive empty i
 
+    (* Check that there are no gaps in the declared positional arguments (E.g.
+       if the parser would interpret the argument at position 0 and 2 but not 1
+       it's probably an error.) *)
     let validate_no_gaps { all_above_inclusive; other } =
       let set_to_validate =
         match all_above_inclusive with
@@ -215,7 +261,7 @@ module Spec = struct
           Seq.init max Fun.id |> Seq.find (fun i -> not (Int.Set.mem i set_to_validate))
         in
         (match gap with
-         | Some i -> Error (Error.Spec_error.Gap_in_positional_argument_range i)
+         | Some i -> Error (Spec_error.Gap_in_positional_argument_range i)
          | None -> Ok ())
     ;;
 
@@ -242,7 +288,12 @@ module Spec = struct
   let empty = { named = Named.empty; positional = Positional.empty }
 end
 
-module Arg_table = struct
+module Raw_arg_table = struct
+  (* This data structure holds all the raw arguments parsed from the command
+     line before any conversions are applied, along with the spec that they
+     were parsed under. Extracting the appropriate value from the table and
+     converting it to the required type is performed by the arg parsers
+     themselves ([_ Arg_parser.t]s). *)
   type t =
     { spec : Spec.t
     ; pos : string list
@@ -255,18 +306,18 @@ module Arg_table = struct
 
   let get_flag_count t name =
     match Name.Map.find t.spec.named name with
-    | None -> raise Error.(Implementation_error.E (No_such_name name))
+    | None -> raise (Implementation_error.E (No_such_arg name))
     | Some { Spec.Named.has_arg = true } ->
-      raise Error.(Implementation_error.E (Not_a_flag name))
+      raise (Implementation_error.E (Not_a_flag name))
     | Some { has_arg = false } ->
       Name.Map.find t.flag_counts name |> Option.value ~default:0
   ;;
 
   let get_opts t name =
     match Name.Map.find t.spec.named name with
-    | None -> raise Error.(Implementation_error.E (No_such_name name))
+    | None -> raise (Implementation_error.E (No_such_arg name))
     | Some { Spec.Named.has_arg = false } ->
-      raise Error.(Implementation_error.E (Not_an_opt name))
+      raise (Implementation_error.E (Not_an_opt name))
     | Some { has_arg = true } -> Name.Map.find t.opts name |> Option.value ~default:[]
   ;;
 
@@ -312,7 +363,7 @@ module Arg_table = struct
     | `Unlimited -> Ok ret
     | `Limited count ->
       if List.length ret.pos > count
-      then Error (Error.Parse_error.Too_many_positional_arguments { max = count })
+      then Error (Parse_error.Too_many_positional_arguments { max = count })
       else Ok ret
   ;;
 
@@ -320,9 +371,38 @@ module Arg_table = struct
     { t with pos = List.rev t.pos; opts = Name.Map.map t.opts ~f:List.rev }
   ;;
 
+  let parse_long_name t term_after_dash_dash remaining_args =
+    if String.starts_with term_after_dash_dash ~prefix:"-"
+    then Error (Parse_error.Name_would_begin_with_dash term_after_dash_dash)
+    else (
+      match String.lsplit2 term_after_dash_dash ~on:'=' with
+      | Some (term_after_dash_dash, value) ->
+        let name = Name.of_string_exn term_after_dash_dash in
+        (match Name.kind name with
+         | `Short -> Error (Parse_error.Short_name_used_with_dash_dash name)
+         | `Long ->
+           (match Name.Map.find t.spec.named name with
+            | None -> Error (Parse_error.No_such_arg name)
+            | Some { Spec.Named.has_arg = false } ->
+              Error (Parse_error.Flag_has_param { name; value })
+            | Some { has_arg = true } -> Ok (add_opt t ~name ~value, remaining_args)))
+      | None ->
+        let name = Name.of_string_exn term_after_dash_dash in
+        (match Name.kind name with
+         | `Short -> Error (Parse_error.Short_name_used_with_dash_dash name)
+         | `Long ->
+           (match Name.Map.find t.spec.named name with
+            | None -> Error (Parse_error.No_such_arg name)
+            | Some { Spec.Named.has_arg = false } -> Ok (add_flag t ~name, remaining_args)
+            | Some { has_arg = true } ->
+              (match remaining_args with
+               | [] -> Error (Parse_error.Arg_lacks_param name)
+               | x :: xs -> Ok (add_opt t ~name ~value:x, xs)))))
+  ;;
+
   let parse_short_name t name remaining_short_sequence remaining_args =
     match Name.Map.find t.spec.named name with
-    | None -> Error (Error.Parse_error.No_such_name name)
+    | None -> Error (Parse_error.No_such_arg name)
     | Some { Spec.Named.has_arg = false } ->
       Ok (add_flag t ~name, remaining_short_sequence, remaining_args)
     | Some { has_arg = true } ->
@@ -333,7 +413,7 @@ module Arg_table = struct
           (* There are no more terms on the command line and this is the last
              character of the short sequence, yet the current argument requires
              a parameter. *)
-          Error (Error.Parse_error.Opt_lacks_arg name)
+          Error (Parse_error.Arg_lacks_param name)
         | x :: xs ->
           (* Treat the next term on the command line as the parameter to the
              current argument. *)
@@ -343,6 +423,9 @@ module Arg_table = struct
         Ok (add_opt t ~name ~value:remaining_short_sequence, "", remaining_args)
   ;;
 
+  (* Parse a sequence of short arguments. If one of the arguments takes a
+     parameter then the remainder of the string is treated as that parameter.
+  *)
   let parse_short_sequence t short_sequence remaining_args =
     let open Result.O in
     let rec loop acc remaining_short_sequence remaining_args =
@@ -350,8 +433,11 @@ module Arg_table = struct
       | Error Name.Invalid.Empty_name -> Ok (acc, remaining_args)
       | Error Begins_with_dash ->
         Error
-          (Error.Parse_error.Short_name_would_be_dash
-             { entire_short_sequence = short_sequence })
+          (Parse_error.Short_name_would_be_dash { entire_short_sequence = short_sequence })
+      | Error (Invalid_char invalid_char) ->
+        Error
+          (Parse_error.Invalid_char_in_argument_name
+             { attempted_argument_name = String.make 1 invalid_char; invalid_char })
       | Ok (name, remaining_short_sequence) ->
         let* acc, remaining_short_sequence, remaining_args =
           parse_short_name acc name remaining_short_sequence remaining_args
@@ -363,68 +449,45 @@ module Arg_table = struct
 
   let parse (spec : Spec.t) args =
     let open Result.O in
-    let rec parse_rec (acc : t) = function
+    let rec loop (acc : t) = function
       | [] -> Ok acc
       | "--" :: xs ->
         (* all arguments after a "--" argument are treated as positional *)
         Result.List.fold_left xs ~init:acc ~f:add_pos
       | "-" :: xs ->
         (* a "-" on its own is treated as positional *)
-        Result.bind (add_pos acc "-") ~f:(fun acc -> parse_rec acc xs)
+        Result.bind (add_pos acc "-") ~f:(fun acc -> loop acc xs)
       | x :: xs ->
         (match String.drop_prefix x ~prefix:"--" with
          | Some name_string ->
-           if String.starts_with name_string ~prefix:"-"
-           then Error (Error.Parse_error.Name_would_begin_with_dash name_string)
-           else (
-             match String.lsplit2 name_string ~on:'=' with
-             | Some (name_string, value) ->
-               let name = Name.of_string_exn name_string in
-               (match Name.kind name with
-                | `Short -> Error (Error.Parse_error.Short_name_used_with_dash_dash name)
-                | `Long ->
-                  (match Name.Map.find spec.named name with
-                   | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.Named.has_arg = false } ->
-                     Error (Error.Parse_error.Flag_has_arg { name; value })
-                   | Some { has_arg = true } ->
-                     let acc = add_opt acc ~name ~value in
-                     parse_rec acc xs))
-             | None ->
-               let name = Name.of_string_exn name_string in
-               (match Name.kind name with
-                | `Short -> Error (Error.Parse_error.Short_name_used_with_dash_dash name)
-                | `Long ->
-                  (match Name.Map.find spec.named name with
-                   | None -> Error (Error.Parse_error.No_such_name name)
-                   | Some { Spec.Named.has_arg = false } ->
-                     let acc = add_flag acc ~name in
-                     parse_rec acc xs
-                   | Some { has_arg = true } ->
-                     (match xs with
-                      | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
-                      | x :: xs ->
-                        let acc = add_opt acc ~name ~value:x in
-                        parse_rec acc xs))))
+           let* acc, xs = parse_long_name acc name_string xs in
+           loop acc xs
          | None ->
            (* x doesn't begin with "--" *)
            (match String.drop_prefix x ~prefix:"-" with
             | Some short_sequence ->
               let* acc, xs = parse_short_sequence acc short_sequence xs in
-              parse_rec acc xs
-            | None -> Result.bind (add_pos acc x) ~f:(fun acc -> parse_rec acc xs)))
+              loop acc xs
+            | None -> Result.bind (add_pos acc x) ~f:(fun acc -> loop acc xs)))
     in
-    parse_rec (empty spec) args |> Result.map ~f:reverse_lists
+    loop (empty spec) args |> Result.map ~f:reverse_lists
   ;;
 end
 
-module Term = struct
-  type 'a parse = string -> ('a, [ `Msg of string ]) result
-  type 'a print = Format.formatter -> 'a -> unit
+module Arg_parser = struct
+  module Conv = struct
+    type 'a parse = string -> ('a, [ `Msg of string ]) result
+    type 'a print = Format.formatter -> 'a -> unit
 
-  type 'a conv =
-    { parse : 'a parse
-    ; print : 'a print
+    type 'a t =
+      { parse : 'a parse
+      ; print : 'a print
+      }
+  end
+
+  type 'a conv = 'a Conv.t =
+    { parse : 'a Conv.parse
+    ; print : 'a Conv.print
     }
 
   let sprintf = Printf.sprintf
@@ -471,7 +534,7 @@ module Term = struct
       |> List.rev
     in
     if List.length duplicate_names > 0
-    then raise Error.Spec_error.(E (Duplicate_enum_names duplicate_names));
+    then raise Spec_error.(E (Duplicate_enum_names duplicate_names));
     let parse s =
       let value_opt =
         List.find_map l ~f:(fun (name, value) ->
@@ -493,14 +556,22 @@ module Term = struct
       match name with
       | Some name -> Format.pp_print_string ppf name
       | None ->
-        raise
-          Error.Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
+        raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
     in
     { parse; print }
   ;;
 
-  type 'a arg_compute = Arg_table.t -> 'a
+  type 'a arg_compute = Raw_arg_table.t -> 'a
 
+  (* A parser for an argument or set of arguments. Typically parsers for each
+     argument are combined into a single giant parser that parses all arguments
+     to a program either returning some record containing all values or
+     returning a unit and having the side effect of running the entire program
+     once parsing is complete. A parser is made up of a spec that tells the low
+     level parser in [Raw_arg_table] how to interpret terms on the command
+     line, and a function [arg_compute] which knows how to retrieve the
+     necessary raw values from a [Raw_arg_table.t] and convert them into the
+     appropriate type for the parser. *)
   type 'a t =
     { arg_spec : Spec.t
     ; arg_compute : 'a arg_compute
@@ -522,61 +593,62 @@ module Term = struct
     }
   ;;
 
-  module O = struct
-    let ( >>| ) t f = map t ~f
-    let ( let+ ) = ( >>| )
-    let ( and+ ) = both
-  end
+  let ( >>| ) t f = map t ~f
+  let ( let+ ) = ( >>| )
+  let ( and+ ) = both
 
   let names_of_strings =
     Nonempty_list.map ~f:(fun string ->
       match Name.of_string string with
       | Ok name -> name
-      | Error invalid -> raise Error.Spec_error.(E (Invalid_name (string, invalid))))
+      | Error invalid -> raise Spec_error.(E (Invalid_name (string, invalid))))
   ;;
 
   let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
 
-  let opt_multi names conv =
+  let named_multi names conv =
     let names = names_of_strings names in
     { arg_spec = Spec.named (Spec.Named.opt names)
     ; arg_compute =
         (fun name_table ->
-          Arg_table.get_opts_names_by_name name_table names
+          Raw_arg_table.get_opts_names_by_name name_table names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
             | Ok value -> value
             | Error (`Msg message) ->
-              raise Error.Parse_error.(E (Conv_failed { locator = `Named name; message }))))
+              raise Parse_error.(E (Conv_failed { locator = `Named name; message }))))
     }
   ;;
 
-  let opt names conv =
-    opt_multi names conv
+  let named_opt names conv =
+    named_multi names conv
     |> map ~f:(function
       | [] -> None
       | [ x ] -> Some x
       | many ->
         raise
-          Error.Parse_error.(
-            E (Opt_appeared_multiple_times (names_of_strings names, List.length many))))
+          Parse_error.(
+            E
+              (Named_opt_appeared_multiple_times (names_of_strings names, List.length many))))
   ;;
 
-  let opt_req names conv =
-    opt_multi names conv
+  let named_req names conv =
+    named_multi names conv
     |> map ~f:(function
-      | [] -> raise Error.Parse_error.(E (Opt_req_missing (names_of_strings names)))
+      | [] -> raise Parse_error.(E (Named_req_missing (names_of_strings names)))
       | [ x ] -> x
       | many ->
         raise
-          Error.Parse_error.(
-            E (Opt_req_appeared_multiple_times (names_of_strings names, List.length many))))
+          Parse_error.(
+            E
+              (Named_req_appeared_multiple_times (names_of_strings names, List.length many))))
   ;;
 
   let flag_count names =
     let names = names_of_strings names in
     { arg_spec = Spec.named (Spec.Named.flag names)
-    ; arg_compute = (fun name_table -> Arg_table.get_flag_count_names name_table names)
+    ; arg_compute =
+        (fun name_table -> Raw_arg_table.get_flag_count_names name_table names)
     }
   ;;
 
@@ -586,47 +658,44 @@ module Term = struct
       | 0 -> false
       | 1 -> true
       | n ->
-        raise
-          Error.Parse_error.(E (Flag_appeared_multiple_times (names_of_strings names, n))))
+        raise Parse_error.(E (Flag_appeared_multiple_times (names_of_strings names, n))))
   ;;
 
-  let pos i conv =
+  let pos_opt i conv =
     let i =
       match Nonnegative_int.of_int i with
       | Some _ -> i
-      | None -> raise Error.Spec_error.(E (Negative_position i))
+      | None -> raise Spec_error.(E (Negative_position i))
     in
     { arg_spec = Spec.positional (Spec.Positional.index i)
     ; arg_compute =
         (fun name_table ->
-          Arg_table.get_pos name_table i
+          Raw_arg_table.get_pos name_table i
           |> Option.map ~f:(fun x ->
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise
-                Error.Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
     }
   ;;
 
   let pos_req i conv =
-    pos i conv
+    pos_opt i conv
     |> map ~f:(function
       | Some x -> x
-      | None -> raise Error.Parse_error.(E (Pos_req_missing i)))
+      | None -> raise Parse_error.(E (Pos_req_missing i)))
   ;;
 
   let pos_left i conv =
     { arg_spec = Spec.positional (Spec.Positional.all_below_exclusive i)
     ; arg_compute =
         (fun name_table ->
-          let left, _ = List.split_n (Arg_table.get_pos_all name_table) i in
+          let left, _ = List.split_n (Raw_arg_table.get_pos_all name_table) i in
           List.mapi left ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise
-                Error.Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
     }
   ;;
 
@@ -634,13 +703,12 @@ module Term = struct
     { arg_spec = Spec.positional (Spec.Positional.all_above_inclusive i)
     ; arg_compute =
         (fun name_table ->
-          let _, right = List.split_n (Arg_table.get_pos_all name_table) i in
+          let _, right = List.split_n (Raw_arg_table.get_pos_all name_table) i in
           List.mapi right ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise
-                Error.Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
     }
   ;;
 
@@ -648,32 +716,36 @@ module Term = struct
 
   let eval t command_line =
     let arg_table =
-      match Arg_table.parse t.arg_spec command_line with
+      match Raw_arg_table.parse t.arg_spec command_line with
       | Ok x -> x
-      | Error e -> raise (Error.Parse_error.E e)
+      | Error e -> raise (Parse_error.E e)
     in
     t.arg_compute arg_table
   ;;
 
-  let validate t = Spec.Positional.validate_no_gaps t.arg_spec.positional |> Result.get_ok
+  let validate t =
+    match Spec.Positional.validate_no_gaps t.arg_spec.positional with
+    | Ok () -> ()
+    | Error e -> raise (Spec_error.E e)
+  ;;
 end
 
 module Command = struct
   type 'a t =
-    | Singleton of 'a Term.t
+    | Singleton of 'a Arg_parser.t
     | Group of
         { children : (Name.t * 'a t) list
-        ; default_term : 'a Term.t option
+        ; default_term : 'a Arg_parser.t option
         }
 
   let singleton term =
-    Term.validate term;
+    Arg_parser.validate term;
     Singleton term
   ;;
 
   let group ?default_term children =
     (match default_term with
-     | Some default_term -> Term.validate default_term
+     | Some default_term -> Arg_parser.validate default_term
      | None -> ());
     let children =
       List.map children ~f:(fun (name_string, command) ->
@@ -683,7 +755,7 @@ module Command = struct
   ;;
 
   type 'a traverse =
-    { term : 'a Term.t
+    { term : 'a Arg_parser.t
     ; command_line : string list
     }
 
@@ -700,32 +772,31 @@ module Command = struct
        | None ->
          (match default_term with
           | Some term -> Ok { term; command_line = x :: xs }
-          | None -> Error Error.Parse_error.Incomplete_command))
+          | None -> Error Parse_error.Incomplete_command))
     | Group { children = _; default_term }, [] ->
       (match default_term with
        | Some term -> Ok { term; command_line = [] }
-       | None -> Error Error.Parse_error.Incomplete_command)
+       | None -> Error Parse_error.Incomplete_command)
   ;;
 
   let eval t command_line =
     let { term; command_line } =
       match traverse t command_line with
       | Ok x -> x
-      | Error e -> raise (Error.Parse_error.E e)
+      | Error e -> raise (Parse_error.E e)
     in
-    Term.eval term command_line
+    Arg_parser.eval term command_line
   ;;
 
   let run t =
     try Command_line.from_env () |> eval t with
-    | Error.Parse_error.E e ->
-      Printf.eprintf "%s" (Error.Parse_error.to_string e);
-      exit Error.Parse_error.exit_code
+    | Parse_error.E e ->
+      Printf.eprintf "%s" (Parse_error.to_string e);
+      exit Parse_error.exit_code
   ;;
-
-  module For_test = struct
-    let eval = eval
-  end
 end
 
-module For_test = For_test
+module For_test = struct
+  include For_test
+  module Parse_error = Parse_error
+end

@@ -6,6 +6,7 @@ module Invalid : sig
   type t =
     | Empty_name
     | Begins_with_dash
+    | Invalid_char of char
 end
 
 val of_string : string -> (t, Invalid.t) result
