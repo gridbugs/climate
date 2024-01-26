@@ -42,5 +42,18 @@ let to_string_with_dashes t =
   String.cat prefix t
 ;;
 
+let chip_short_name_off_string string =
+  if String.starts_with string ~prefix:"-"
+  then Error Invalid.Begins_with_dash
+  else (
+    match String.length string with
+    | 0 -> Error Invalid.Empty_name
+    | 1 -> Ok (string, "")
+    | n ->
+      let name = String.get string 0 |> String.make 1 in
+      let rest = String.sub string ~pos:1 ~len:(n - 1) in
+      Ok (name, rest))
+;;
+
 module Set = Set.Make (String)
 module Map = Map.Make (String)

@@ -1,5 +1,4 @@
 open Climate
-open Term.O
 
 let eval_and_print_parse_error = Util.eval_and_print_parse_error
 
@@ -44,23 +43,6 @@ let%expect_test "unexpected value for flag" =
   let command = Command.singleton term in
   eval_and_print_parse_error command [ "--foo=x" ];
   [%expect {| Flag --foo does not take an value but was passed "x" |}]
-;;
-
-let%expect_test "option used in non-final position of short sequence" =
-  let term =
-    let+ flag = Term.(flag [ "a" ])
-    and+ value = Term.(opt_req [ "b" ] string) in
-    print_endline (Printf.sprintf "%b %s" flag value)
-  in
-  let command = Command.singleton term in
-  eval_and_print_parse_error command [ "-a"; "-b"; "foo" ];
-  [%expect {| true foo |}];
-  eval_and_print_parse_error command [ "-ab"; "foo" ];
-  [%expect {| true foo |}];
-  eval_and_print_parse_error command [ "-ba"; "foo" ];
-  [%expect
-    {|
-    Option "-b" requires an argument but appears in a sequence of short names "-ba" in a non-final position. When passing multiple short names in a sequence only the final one may take an argument. |}]
 ;;
 
 let%expect_test "short name used with --" =

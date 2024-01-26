@@ -1,6 +1,8 @@
 open! Import
 module Nonempty_list = Climate_stdlib.Nonempty_list
 
+let sprintf = Printf.sprintf
+
 module Names = struct
   type t = Name.t Nonempty_list.t
 
@@ -16,8 +18,6 @@ module Command_line = struct
 end
 
 module Error = struct
-  let sprintf = Printf.sprintf
-
   module Parse_error = struct
     (* Errors encountered while interpreting command-line arguments. This
        indicates that the user of a CLI program made with this library has
@@ -27,10 +27,6 @@ module Error = struct
       | Flag_has_arg of
           { name : Name.t
           ; value : string
-          }
-      | Opt_used_in_non_last_position_of_short_name_sequence of
-          { name : Name.t
-          ; short_sequence : string
           }
       | No_such_name of Name.t
       | Name_would_begin_with_dash of string
@@ -58,13 +54,6 @@ module Error = struct
           "Flag %s does not take an value but was passed %S"
           (Name.to_string_with_dashes name)
           value
-      | Opt_used_in_non_last_position_of_short_name_sequence { name; short_sequence } ->
-        sprintf
-          "Option %S requires an argument but appears in a sequence of short names \
-           \"-%s\" in a non-final position. When passing multiple short names in a \
-           sequence only the final one may take an argument."
-          (Name.to_string_with_dashes name)
-          short_sequence
       | No_such_name name ->
         sprintf "Unknown argument name: %s" (Name.to_string_with_dashes name)
       | Name_would_begin_with_dash string ->
@@ -331,7 +320,49 @@ module Arg_table = struct
     { t with pos = List.rev t.pos; opts = Name.Map.map t.opts ~f:List.rev }
   ;;
 
+  let parse_short_name t name remaining_short_sequence remaining_args =
+    match Name.Map.find t.spec.named name with
+    | None -> Error (Error.Parse_error.No_such_name name)
+    | Some { Spec.Named.has_arg = false } ->
+      Ok (add_flag t ~name, remaining_short_sequence, remaining_args)
+    | Some { has_arg = true } ->
+      if String.is_empty remaining_short_sequence
+      then (
+        match remaining_args with
+        | [] ->
+          (* There are no more terms on the command line and this is the last
+             character of the short sequence, yet the current argument requires
+             a parameter. *)
+          Error (Error.Parse_error.Opt_lacks_arg name)
+        | x :: xs ->
+          (* Treat the next term on the command line as the parameter to the
+             current argument. *)
+          Ok (add_opt t ~name ~value:x, remaining_short_sequence, xs))
+      else
+        (* Treat the remainder of the short sequence as the parameter. *)
+        Ok (add_opt t ~name ~value:remaining_short_sequence, "", remaining_args)
+  ;;
+
+  let parse_short_sequence t short_sequence remaining_args =
+    let open Result.O in
+    let rec loop acc remaining_short_sequence remaining_args =
+      match Name.chip_short_name_off_string remaining_short_sequence with
+      | Error Name.Invalid.Empty_name -> Ok (acc, remaining_args)
+      | Error Begins_with_dash ->
+        Error
+          (Error.Parse_error.Short_name_would_be_dash
+             { entire_short_sequence = short_sequence })
+      | Ok (name, remaining_short_sequence) ->
+        let* acc, remaining_short_sequence, remaining_args =
+          parse_short_name acc name remaining_short_sequence remaining_args
+        in
+        loop acc remaining_short_sequence remaining_args
+    in
+    loop t short_sequence remaining_args
+  ;;
+
   let parse (spec : Spec.t) args =
+    let open Result.O in
     let rec parse_rec (acc : t) = function
       | [] -> Ok acc
       | "--" :: xs ->
@@ -379,50 +410,8 @@ module Arg_table = struct
            (* x doesn't begin with "--" *)
            (match String.drop_prefix x ~prefix:"-" with
             | Some short_sequence ->
-              let rec loop acc rem_names =
-                match String.length rem_names with
-                | 1 ->
-                  (* This is the final char of the short sequence. *)
-                  (match Name.of_string rem_names with
-                   | Error Empty_name -> failwith "unreachable"
-                   | Error Begins_with_dash ->
-                     Error
-                       (Error.Parse_error.Short_name_would_be_dash
-                          { entire_short_sequence = short_sequence })
-                   | Ok name ->
-                     (match Name.Map.find spec.named name with
-                      | None -> Error (Error.Parse_error.No_such_name name)
-                      | Some { Spec.Named.has_arg = false } ->
-                        let acc = add_flag acc ~name in
-                        parse_rec acc xs
-                      | Some { has_arg = true } ->
-                        (match xs with
-                         | [] -> Error (Error.Parse_error.Opt_lacks_arg name)
-                         | x :: xs ->
-                           let acc = add_opt acc ~name ~value:x in
-                           parse_rec acc xs)))
-                | n ->
-                  assert (n > 1);
-                  (match String.get rem_names 0 |> String.make 1 |> Name.of_string with
-                   | Ok name ->
-                     (match Name.Map.find spec.named name with
-                      | None -> Error (Error.Parse_error.No_such_name name)
-                      | Some { Spec.Named.has_arg = true } ->
-                        Error
-                          (Error.Parse_error
-                           .Opt_used_in_non_last_position_of_short_name_sequence
-                             { name; short_sequence })
-                      | Some { has_arg = false } ->
-                        let acc = add_flag acc ~name in
-                        let rest = String.sub rem_names ~pos:1 ~len:(n - 1) in
-                        loop acc rest)
-                   | Error Empty_name -> failwith "unreachable"
-                   | Error Begins_with_dash ->
-                     Error
-                       (Error.Parse_error.Short_name_would_be_dash
-                          { entire_short_sequence = short_sequence }))
-              in
-              loop acc short_sequence
+              let* acc, xs = parse_short_sequence acc short_sequence xs in
+              parse_rec acc xs
             | None -> Result.bind (add_pos acc x) ~f:(fun acc -> parse_rec acc xs)))
     in
     parse_rec (empty spec) args |> Result.map ~f:reverse_lists

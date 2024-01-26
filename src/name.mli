@@ -14,6 +14,7 @@ val to_string : t -> string
 val equal : t -> t -> bool
 val kind : t -> [ `Short | `Long ]
 val to_string_with_dashes : t -> string
+val chip_short_name_off_string : string -> (t * string, Invalid.t) result
 
 module Set : Set.S with type elt = t
 module Map : Map.S with type key = t
