@@ -2,7 +2,24 @@
 
 [![test status](https://github.com/gridbugs/climate/actions/workflows/test.yml/badge.svg)](https://github.com/gridbugs/climate/actions/workflows/test.yml)
 
-A boring command-line parser for OCaml.
+A boring, declarative command-line parser for OCaml.
+
+## Rationale
+
+Programs written in OCaml should conform to existing UX conventions so as to
+match the expectations of users coming from other tools. For command-line
+programs which wish to parse their arguments in a declarative style, existing
+solutions all seem to deviate from the conventions established by common Unix
+tools. The two popular libraries for declarative command-line argument parsing
+in OCaml are`cmdliner` and `base`'s `Command` module. Both of these libraries
+present unconventional behaviour in that non-ambiguous prefixes of arguments are
+treated as the full argument names. Additionally, `cmdliner` lacks support for
+generating shell autocompletion scripts, and `base` only supports arguments
+beginning with a single `-`.
+
+This library aims to be an alternative to `cmdliner` and `Base.Command` with
+support for generating autocompletion scripts and which behaves as
+conventionally as possible.
 
 ## Manual
 
