@@ -1,21 +1,18 @@
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
-  module Conv : sig
-    type 'a parse = string -> ('a, [ `Msg of string ]) result
-    type 'a print = Format.formatter -> 'a -> unit
-
-    type 'a t =
-      { parse : 'a parse
-      ; print : 'a print
-      }
-  end
+  type 'a parse = string -> ('a, [ `Msg of string ]) result
+  type 'a print = Format.formatter -> 'a -> unit
 
   (** Knows how to interpret strings on the command line as a particular type
       and how to format values of said type as strings. Define a custom [_ conv]
-      value to implement a term of a custom type. *)
-  type 'a conv = 'a Conv.t =
-    { parse : 'a Conv.parse
-    ; print : 'a Conv.print
+      value to implement a parser for a custom type. *)
+  type 'a conv =
+    { parse : 'a parse
+    ; print : 'a print
+    ; default_value_name : string
+    (* In help messages, [default_value_name] is the placeholder for a value in
+       the documentation of an argument with a parameter and in the usage
+       message (e.g. "--foo=STRING"). *)
     }
 
   val string : string conv
@@ -27,7 +24,11 @@ module Arg_parser : sig
       type ['a]. The values and their names are given by the [values] argument and
       [eq] is used when printing values to tie a given value of type ['a] to a
       name. *)
-  val enum : (string * 'a) list -> eq:('a -> 'a -> bool) -> 'a conv
+  val enum
+    :  (string * 'a) list
+    -> eq:('a -> 'a -> bool)
+    -> default_value_name:string
+    -> 'a conv
 
   (** A parser of values of type ['a] *)
   type 'a t
@@ -54,6 +55,10 @@ module Arg_parser : sig
 
   (** A named argument that may appear at most once on the command line. *)
   val named_opt : names -> 'a conv -> 'a option t
+
+  (** A named argument that may appear at most once on the command line. If the
+      argument is not passed then a given default value will be used instead. *)
+  val named_opt_with_default : names -> 'a conv -> default:'a -> 'a t
 
   (** A named argument that must appear exactly once on the command line. *)
   val named_req : names -> 'a conv -> 'a t

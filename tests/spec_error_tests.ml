@@ -47,7 +47,11 @@ let%expect_test "negative position" =
 
 let%expect_test "duplicate enum names" =
   check (fun () ->
-    pos_all (enum [ "one", 1; "two", 2; "three", 3; "one", 1 ] ~eq:Int.equal));
+    pos_all
+      (enum
+         [ "one", 1; "two", 2; "three", 3; "one", 1 ]
+         ~eq:Int.equal
+         ~default_value_name:"VAL"));
   [%expect
     {| An enum was declared with duplicate names. The following names were duplicated: one |}]
 ;;
@@ -59,4 +63,11 @@ let%expect_test "gap in positional argument range" =
     ());
   [%expect
     {| Attempted to declare a parser with a gap in its positional arguments. No parser would interpret the argument at position 1 but there is a parser for at least one argument at a higher position. |}]
+;;
+
+let%expect_test "use of reserved help names" =
+  check (fun () ->
+    let+ (_ : string) = named_req [ "help" ] string in
+    ());
+  [%expect {| The name "--help" can't be used as it's reserved for printing help messages. |}]
 ;;

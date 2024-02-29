@@ -122,6 +122,7 @@ module Spec_error = struct
     | Duplicate_enum_names of string list
     | No_such_enum_value of { valid_names : string list }
     | Gap_in_positional_argument_range of int
+    | Name_reserved_for_help of Name.t
 
   exception E of t
 
@@ -161,6 +162,10 @@ module Spec_error = struct
          would interpret the argument at position %d but there is a parser for at least \
          one argument at a higher position."
         i
+    | Name_reserved_for_help name ->
+      sprintf
+        "The name %S can't be used as it's reserved for printing help messages."
+        (Name.to_string_with_dashes name)
   ;;
 end
 
@@ -181,29 +186,60 @@ let name_of_string_exn string =
   | Error e -> raise Spec_error.(E (Invalid_name (string, e)))
 ;;
 
+let help_names : Name.t Nonempty_list.t =
+  [ Name.of_string_exn "help"; Name.of_string_exn "h" ]
+;;
+
 module Spec = struct
   module Named = struct
-    type arg_info = { has_arg : bool }
-    type t = arg_info Name.Map.t
+    module Info = struct
+      type t =
+        { names : Name.t Nonempty_list.t
+        ; value_name : string option
+        ; default_string : string option
+        ; required : bool
+        }
 
-    let empty = Name.Map.empty
+      let has_arg t = Option.is_some t.value_name
 
-    let add t name ~has_arg =
-      if Name.Map.mem name t
-      then raise Spec_error.(E (Duplicate_name name))
-      else Name.Map.add t ~key:name ~data:{ has_arg }
+      let flag names =
+        { names; required = false; default_string = None; value_name = None }
+      ;;
+
+      let arg names ~value_name ~default_string ~required =
+        { names; value_name = Some value_name; default_string; required }
+      ;;
+    end
+
+    type t = { infos : Info.t list }
+
+    let empty = { infos = [] }
+
+    let get_info_by_name { infos } name =
+      List.find_opt infos ~f:(fun (info : Info.t) ->
+        List.exists (Nonempty_list.to_list info.names) ~f:(Name.equal name))
     ;;
 
-    let add_names t names ~has_arg =
-      List.fold_left (Nonempty_list.to_list names) ~init:t ~f:(fun acc name ->
-        add acc name ~has_arg)
+    let contains_name { infos } name =
+      List.exists infos ~f:(fun (info : Info.t) ->
+        List.exists (Nonempty_list.to_list info.names) ~f:(Name.equal name))
     ;;
 
-    let flag names = add_names empty names ~has_arg:false
-    let opt names = add_names empty names ~has_arg:true
+    let add t (info : Info.t) =
+      List.iter (Nonempty_list.to_list info.names) ~f:(fun name ->
+        if contains_name t name then raise Spec_error.(E (Duplicate_name name)));
+      { infos = info :: t.infos }
+    ;;
 
-    let merge x y =
-      Name.Map.fold y ~init:x ~f:(fun ~key ~data acc -> add acc key ~has_arg:data.has_arg)
+    let merge x y = List.fold_left y.infos ~init:x ~f:add
+
+    let validate_no_reserved_help_names t =
+      match
+        List.find_map (Nonempty_list.to_list help_names) ~f:(fun name ->
+          if contains_name t name then Some name else None)
+      with
+      | None -> Ok ()
+      | Some help_name -> Error (Spec_error.Name_reserved_for_help help_name)
     ;;
   end
 
@@ -283,9 +319,15 @@ module Spec = struct
     }
   ;;
 
+  let empty = { named = Named.empty; positional = Positional.empty }
   let named named = { named; positional = Positional.empty }
   let positional positional = { named = Named.empty; positional }
-  let empty = { named = Named.empty; positional = Positional.empty }
+  let flag names = named (Named.add Named.empty (Named.Info.flag names))
+
+  let arg names ~value_name ~default_string ~required =
+    named
+      (Named.add Named.empty (Named.Info.arg names ~value_name ~default_string ~required))
+  ;;
 end
 
 module Raw_arg_table = struct
@@ -305,20 +347,21 @@ module Raw_arg_table = struct
   let get_pos t i = List.nth_opt t.pos i
 
   let get_flag_count t name =
-    match Name.Map.find t.spec.named name with
+    match Spec.Named.get_info_by_name t.spec.named name with
     | None -> raise (Implementation_error.E (No_such_arg name))
-    | Some { Spec.Named.has_arg = true } ->
-      raise (Implementation_error.E (Not_a_flag name))
-    | Some { has_arg = false } ->
-      Name.Map.find t.flag_counts name |> Option.value ~default:0
+    | Some info ->
+      if Spec.Named.Info.has_arg info
+      then raise (Implementation_error.E (Not_a_flag name))
+      else Name.Map.find t.flag_counts name |> Option.value ~default:0
   ;;
 
   let get_opts t name =
-    match Name.Map.find t.spec.named name with
+    match Spec.Named.get_info_by_name t.spec.named name with
     | None -> raise (Implementation_error.E (No_such_arg name))
-    | Some { Spec.Named.has_arg = false } ->
-      raise (Implementation_error.E (Not_an_opt name))
-    | Some { has_arg = true } -> Name.Map.find t.opts name |> Option.value ~default:[]
+    | Some info ->
+      if Spec.Named.Info.has_arg info
+      then Name.Map.find t.opts name |> Option.value ~default:[]
+      else raise (Implementation_error.E (Not_an_opt name))
   ;;
 
   let get_flag_count_names t names =
@@ -381,46 +424,50 @@ module Raw_arg_table = struct
         (match Name.kind name with
          | `Short -> Error (Parse_error.Short_name_used_with_dash_dash name)
          | `Long ->
-           (match Name.Map.find t.spec.named name with
+           (match Spec.Named.get_info_by_name t.spec.named name with
             | None -> Error (Parse_error.No_such_arg name)
-            | Some { Spec.Named.has_arg = false } ->
-              Error (Parse_error.Flag_has_param { name; value })
-            | Some { has_arg = true } -> Ok (add_opt t ~name ~value, remaining_args)))
+            | Some info ->
+              if Spec.Named.Info.has_arg info
+              then Ok (add_opt t ~name ~value, remaining_args)
+              else Error (Parse_error.Flag_has_param { name; value })))
       | None ->
         let name = Name.of_string_exn term_after_dash_dash in
         (match Name.kind name with
          | `Short -> Error (Parse_error.Short_name_used_with_dash_dash name)
          | `Long ->
-           (match Name.Map.find t.spec.named name with
+           (match Spec.Named.get_info_by_name t.spec.named name with
             | None -> Error (Parse_error.No_such_arg name)
-            | Some { Spec.Named.has_arg = false } -> Ok (add_flag t ~name, remaining_args)
-            | Some { has_arg = true } ->
-              (match remaining_args with
-               | [] -> Error (Parse_error.Arg_lacks_param name)
-               | x :: xs -> Ok (add_opt t ~name ~value:x, xs)))))
+            | Some info ->
+              if Spec.Named.Info.has_arg info
+              then (
+                match remaining_args with
+                | [] -> Error (Parse_error.Arg_lacks_param name)
+                | x :: xs -> Ok (add_opt t ~name ~value:x, xs))
+              else Ok (add_flag t ~name, remaining_args))))
   ;;
 
   let parse_short_name t name remaining_short_sequence remaining_args =
-    match Name.Map.find t.spec.named name with
+    match Spec.Named.get_info_by_name t.spec.named name with
     | None -> Error (Parse_error.No_such_arg name)
-    | Some { Spec.Named.has_arg = false } ->
-      Ok (add_flag t ~name, remaining_short_sequence, remaining_args)
-    | Some { has_arg = true } ->
-      if String.is_empty remaining_short_sequence
-      then (
-        match remaining_args with
-        | [] ->
-          (* There are no more terms on the command line and this is the last
-             character of the short sequence, yet the current argument requires
-             a parameter. *)
-          Error (Parse_error.Arg_lacks_param name)
-        | x :: xs ->
-          (* Treat the next term on the command line as the parameter to the
-             current argument. *)
-          Ok (add_opt t ~name ~value:x, remaining_short_sequence, xs))
-      else
-        (* Treat the remainder of the short sequence as the parameter. *)
-        Ok (add_opt t ~name ~value:remaining_short_sequence, "", remaining_args)
+    | Some info ->
+      if Spec.Named.Info.has_arg info
+      then
+        if String.is_empty remaining_short_sequence
+        then (
+          match remaining_args with
+          | [] ->
+            (* There are no more terms on the command line and this is the last
+               character of the short sequence, yet the current argument requires
+               a parameter. *)
+            Error (Parse_error.Arg_lacks_param name)
+          | x :: xs ->
+            (* Treat the next term on the command line as the parameter to the
+               current argument. *)
+            Ok (add_opt t ~name ~value:x, remaining_short_sequence, xs))
+        else
+          (* Treat the remainder of the short sequence as the parameter. *)
+          Ok (add_opt t ~name ~value:remaining_short_sequence, "", remaining_args)
+      else Ok (add_flag t ~name, remaining_short_sequence, remaining_args)
   ;;
 
   (* Parse a sequence of short arguments. If one of the arguments takes a
@@ -475,23 +522,25 @@ module Raw_arg_table = struct
 end
 
 module Arg_parser = struct
-  module Conv = struct
-    type 'a parse = string -> ('a, [ `Msg of string ]) result
-    type 'a print = Format.formatter -> 'a -> unit
+  type 'a parse = string -> ('a, [ `Msg of string ]) result
+  type 'a print = Format.formatter -> 'a -> unit
 
-    type 'a t =
-      { parse : 'a parse
-      ; print : 'a print
-      }
-  end
-
-  type 'a conv = 'a Conv.t =
-    { parse : 'a Conv.parse
-    ; print : 'a Conv.print
+  type 'a conv =
+    { parse : 'a parse
+    ; print : 'a print
+    ; default_value_name : string
     }
 
+  let conv_value_to_string conv value =
+    conv.print Format.str_formatter value;
+    Format.flush_str_formatter ()
+  ;;
+
   let sprintf = Printf.sprintf
-  let string = { parse = Result.ok; print = Format.pp_print_string }
+
+  let string =
+    { parse = Result.ok; print = Format.pp_print_string; default_value_name = "STRING" }
+  ;;
 
   let int =
     let parse s =
@@ -499,7 +548,7 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an int)" s))
     in
-    { parse; print = Format.pp_print_int }
+    { parse; print = Format.pp_print_int; default_value_name = "INT" }
   ;;
 
   let float =
@@ -508,7 +557,7 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an float)" s))
     in
-    { parse; print = Format.pp_print_float }
+    { parse; print = Format.pp_print_float; default_value_name = "FLOAT" }
   ;;
 
   let bool =
@@ -517,10 +566,10 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an bool)" s))
     in
-    { parse; print = Format.pp_print_bool }
+    { parse; print = Format.pp_print_bool; default_value_name = "BOOL" }
   ;;
 
-  let enum l ~eq =
+  let enum l ~eq ~default_value_name =
     let all_names = List.map l ~f:fst in
     let duplicate_names =
       List.fold_left
@@ -558,7 +607,7 @@ module Arg_parser = struct
       | None ->
         raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
     in
-    { parse; print }
+    { parse; print; default_value_name }
   ;;
 
   type 'a arg_compute = Raw_arg_table.t -> 'a
@@ -580,15 +629,15 @@ module Arg_parser = struct
   type 'a nonempty_list = 'a Nonempty_list.t = ( :: ) of ('a * 'a list)
 
   let map { arg_spec; arg_compute } ~f =
-    { arg_spec; arg_compute = (fun name_table -> f (arg_compute name_table)) }
+    { arg_spec; arg_compute = (fun raw_arg_table -> f (arg_compute raw_arg_table)) }
   ;;
 
   let both x y =
     { arg_spec = Spec.merge x.arg_spec y.arg_spec
     ; arg_compute =
-        (fun name_table ->
-          let x_value = x.arg_compute name_table in
-          let y_value = y.arg_compute name_table in
+        (fun raw_arg_table ->
+          let x_value = x.arg_compute raw_arg_table in
+          let y_value = y.arg_compute raw_arg_table in
           x_value, y_value)
     }
   ;;
@@ -596,22 +645,16 @@ module Arg_parser = struct
   let ( >>| ) t f = map t ~f
   let ( let+ ) = ( >>| )
   let ( and+ ) = both
-
-  let names_of_strings =
-    Nonempty_list.map ~f:(fun string ->
-      match Name.of_string string with
-      | Ok name -> name
-      | Error invalid -> raise Spec_error.(E (Invalid_name (string, invalid))))
-  ;;
-
+  let names_of_strings = Nonempty_list.map ~f:name_of_string_exn
   let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
 
-  let named_multi names conv =
+  let named_multi_gen names conv ~required =
     let names = names_of_strings names in
-    { arg_spec = Spec.named (Spec.Named.opt names)
+    { arg_spec =
+        Spec.arg names ~value_name:conv.default_value_name ~default_string:None ~required
     ; arg_compute =
-        (fun name_table ->
-          Raw_arg_table.get_opts_names_by_name name_table names
+        (fun raw_arg_table ->
+          Raw_arg_table.get_opts_names_by_name raw_arg_table names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
             | Ok value -> value
@@ -619,6 +662,8 @@ module Arg_parser = struct
               raise Parse_error.(E (Conv_failed { locator = `Named name; message }))))
     }
   ;;
+
+  let named_multi names conv = named_multi_gen names conv ~required:false
 
   let named_opt names conv =
     named_multi names conv
@@ -632,8 +677,12 @@ module Arg_parser = struct
               (Named_opt_appeared_multiple_times (names_of_strings names, List.length many))))
   ;;
 
+  let named_opt_with_default names conv ~default =
+    named_opt names conv >>| Option.value ~default
+  ;;
+
   let named_req names conv =
-    named_multi names conv
+    named_multi_gen names conv ~required:true
     |> map ~f:(function
       | [] -> raise Parse_error.(E (Named_req_missing (names_of_strings names)))
       | [ x ] -> x
@@ -646,9 +695,9 @@ module Arg_parser = struct
 
   let flag_count names =
     let names = names_of_strings names in
-    { arg_spec = Spec.named (Spec.Named.flag names)
+    { arg_spec = Spec.flag names
     ; arg_compute =
-        (fun name_table -> Raw_arg_table.get_flag_count_names name_table names)
+        (fun raw_arg_table -> Raw_arg_table.get_flag_count_names raw_arg_table names)
     }
   ;;
 
@@ -669,8 +718,8 @@ module Arg_parser = struct
     in
     { arg_spec = Spec.positional (Spec.Positional.index i)
     ; arg_compute =
-        (fun name_table ->
-          Raw_arg_table.get_pos name_table i
+        (fun raw_arg_table ->
+          Raw_arg_table.get_pos raw_arg_table i
           |> Option.map ~f:(fun x ->
             match conv.parse x with
             | Ok x -> x
@@ -689,8 +738,8 @@ module Arg_parser = struct
   let pos_left i conv =
     { arg_spec = Spec.positional (Spec.Positional.all_below_exclusive i)
     ; arg_compute =
-        (fun name_table ->
-          let left, _ = List.split_n (Raw_arg_table.get_pos_all name_table) i in
+        (fun raw_arg_table ->
+          let left, _ = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
           List.mapi left ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -702,8 +751,8 @@ module Arg_parser = struct
   let pos_right i conv =
     { arg_spec = Spec.positional (Spec.Positional.all_above_inclusive i)
     ; arg_compute =
-        (fun name_table ->
-          let _, right = List.split_n (Raw_arg_table.get_pos_all name_table) i in
+        (fun raw_arg_table ->
+          let _, right = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
           List.mapi right ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -724,9 +773,28 @@ module Arg_parser = struct
   ;;
 
   let validate t =
-    match Spec.Positional.validate_no_gaps t.arg_spec.positional with
+    (match Spec.Positional.validate_no_gaps t.arg_spec.positional with
+     | Ok () -> ()
+     | Error e -> raise (Spec_error.E e));
+    match Spec.Named.validate_no_reserved_help_names t.arg_spec.named with
     | Ok () -> ()
     | Error e -> raise (Spec_error.E e)
+  ;;
+
+  let add_help { arg_spec; arg_compute } =
+    let help_spec = Spec.flag help_names in
+    { arg_spec = Spec.merge arg_spec help_spec
+    ; arg_compute =
+        (fun raw_arg_table ->
+          if Raw_arg_table.get_flag_count_names raw_arg_table help_names > 0
+          then failwith "help"
+          else arg_compute raw_arg_table)
+    }
+  ;;
+
+  let finalize t =
+    validate t;
+    add_help t
   ;;
 end
 
@@ -738,15 +806,10 @@ module Command = struct
         ; default_term : 'a Arg_parser.t option
         }
 
-  let singleton term =
-    Arg_parser.validate term;
-    Singleton term
-  ;;
+  let singleton term = Singleton (Arg_parser.finalize term)
 
   let group ?default_term children =
-    (match default_term with
-     | Some default_term -> Arg_parser.validate default_term
-     | None -> ());
+    let default_term = Option.map default_term ~f:Arg_parser.finalize in
     let children =
       List.map children ~f:(fun (name_string, command) ->
         name_of_string_exn name_string, command)

@@ -17,3 +17,8 @@
  (names group)
  (libraries climate)
  (modules group))
+
+(executables
+ (names optional_args)
+ (libraries climate)
+ (modules optional_args))
