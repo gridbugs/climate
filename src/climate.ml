@@ -195,20 +195,19 @@ module Spec = struct
     module Info = struct
       type t =
         { names : Name.t Nonempty_list.t
-        ; value_name : string option
-        ; default_string : string option
-        ; required : bool
+        ; has_arg : [ `No | `Yes_with_value_name of string ]
+        ; default_string :
+            string option (* default value to display in documentation (if any) *)
+        ; required : bool (* determines if argument is shown in usage string *)
         }
 
-      let has_arg t = Option.is_some t.value_name
-
-      let flag names =
-        { names; required = false; default_string = None; value_name = None }
+      let has_arg t =
+        match t.has_arg with
+        | `No -> false
+        | `Yes_with_value_name _ -> true
       ;;
 
-      let arg names ~value_name ~default_string ~required =
-        { names; value_name = Some value_name; default_string; required }
-      ;;
+      let flag names = { names; has_arg = `No; default_string = None; required = false }
     end
 
     type t = { infos : Info.t list }
@@ -320,14 +319,14 @@ module Spec = struct
   ;;
 
   let empty = { named = Named.empty; positional = Positional.empty }
-  let named named = { named; positional = Positional.empty }
   let positional positional = { named = Named.empty; positional }
-  let flag names = named (Named.add Named.empty (Named.Info.flag names))
 
-  let arg names ~value_name ~default_string ~required =
-    named
-      (Named.add Named.empty (Named.Info.arg names ~value_name ~default_string ~required))
+  let named info =
+    let named = Named.add Named.empty info in
+    { named; positional = Positional.empty }
   ;;
+
+  let flag names = named (Named.Info.flag names)
 end
 
 module Raw_arg_table = struct
@@ -648,13 +647,11 @@ module Arg_parser = struct
   let names_of_strings = Nonempty_list.map ~f:name_of_string_exn
   let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
 
-  let named_multi_gen names conv ~required =
-    let names = names_of_strings names in
-    { arg_spec =
-        Spec.arg names ~value_name:conv.default_value_name ~default_string:None ~required
+  let named_multi_gen info conv =
+    { arg_spec = Spec.named info
     ; arg_compute =
         (fun raw_arg_table ->
-          Raw_arg_table.get_opts_names_by_name raw_arg_table names
+          Raw_arg_table.get_opts_names_by_name raw_arg_table info.names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
             | Ok value -> value
@@ -663,26 +660,56 @@ module Arg_parser = struct
     }
   ;;
 
-  let named_multi names conv = named_multi_gen names conv ~required:false
-
-  let named_opt names conv =
-    named_multi names conv
+  let named_opt_gen (info : Spec.Named.Info.t) conv =
+    named_multi_gen info conv
     |> map ~f:(function
       | [] -> None
       | [ x ] -> Some x
       | many ->
         raise
           Parse_error.(
-            E
-              (Named_opt_appeared_multiple_times (names_of_strings names, List.length many))))
+            E (Named_opt_appeared_multiple_times (info.names, List.length many))))
+  ;;
+
+  let named_multi names conv =
+    named_multi_gen
+      { names = names_of_strings names
+      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; default_string = None
+      ; required = false
+      }
+      conv
+  ;;
+
+  let named_opt names conv =
+    named_opt_gen
+      { names = names_of_strings names
+      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; default_string = None
+      ; required = false
+      }
+      conv
   ;;
 
   let named_opt_with_default names conv ~default =
-    named_opt names conv >>| Option.value ~default
+    named_opt_gen
+      { names = names_of_strings names
+      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; default_string = Some (conv_value_to_string conv default)
+      ; required = false
+      }
+      conv
+    >>| Option.value ~default
   ;;
 
   let named_req names conv =
-    named_multi_gen names conv ~required:true
+    named_multi_gen
+      { names = names_of_strings names
+      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; default_string = None
+      ; required = true
+      }
+      conv
     |> map ~f:(function
       | [] -> raise Parse_error.(E (Named_req_missing (names_of_strings names)))
       | [ x ] -> x

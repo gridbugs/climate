@@ -69,5 +69,6 @@ let%expect_test "use of reserved help names" =
   check (fun () ->
     let+ (_ : string) = named_req [ "help" ] string in
     ());
-  [%expect {| The name "--help" can't be used as it's reserved for printing help messages. |}]
+  [%expect
+    {| The name "--help" can't be used as it's reserved for printing help messages. |}]
 ;;
