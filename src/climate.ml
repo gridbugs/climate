@@ -14,7 +14,16 @@ module Names = struct
 end
 
 module Command_line = struct
-  let from_env () = Sys.argv |> Array.to_list |> List.tl
+  type t =
+    { program : string
+    ; args : string list
+    }
+
+  let from_env () =
+    match Sys.argv |> Array.to_list with
+    | program :: args -> { program; args }
+    | [] -> failwith "unable to read command-line arguments from environment"
+  ;;
 end
 
 module Parse_error = struct
@@ -473,6 +482,27 @@ module Spec = struct
     | Some { value_name; _ } -> Format.fprintf ppf "[%s]..." value_name
     | None -> ()
   ;;
+
+  let named_help ppf { named; _ } =
+    if not (List.is_empty named.infos) then Format.pp_print_string ppf "Options:";
+    Format.pp_print_newline ppf ();
+    List.iter named.infos ~f:(fun (info : Named.Info.t) ->
+      Format.pp_print_string ppf " ";
+      Format.pp_print_list
+        ~pp_sep:(fun ppf () -> Format.pp_print_string ppf ", ")
+        (fun ppf name -> Format.pp_print_string ppf (Name.to_string_with_dashes name))
+        ppf
+        (Nonempty_list.to_list info.names);
+      (match info.has_param with
+       | `No -> ()
+       | `Yes_with_value_name value_name ->
+         Format.pp_print_string ppf " ";
+         Format.fprintf ppf "<%s>" value_name);
+      (match info.desc with
+       | None -> ()
+       | Some desc -> Format.fprintf ppf "   %s" desc);
+      Format.pp_print_newline ppf ())
+  ;;
 end
 
 module Raw_arg_table = struct
@@ -755,7 +785,14 @@ module Arg_parser = struct
     { parse; print; default_value_name }
   ;;
 
-  type 'a arg_compute = Raw_arg_table.t -> 'a
+  module Context = struct
+    type t =
+      { raw_arg_table : Raw_arg_table.t
+      ; subcommand : string list
+      }
+  end
+
+  type 'a arg_compute = Context.t -> 'a
 
   (* A parser for an argument or set of arguments. Typically parsers for each
      argument are combined into a single giant parser that parses all arguments
@@ -764,7 +801,7 @@ module Arg_parser = struct
      once parsing is complete. A parser is made up of a spec that tells the low
      level parser in [Raw_arg_table] how to interpret terms on the command
      line, and a function [arg_compute] which knows how to retrieve the
-     necessary raw values from a [Raw_arg_table.t] and convert them into the
+     necessary raw values from a [Context.t] and convert them into the
      appropriate type for the parser. *)
   type 'a t =
     { arg_spec : Spec.t
@@ -774,15 +811,15 @@ module Arg_parser = struct
   type 'a nonempty_list = 'a Nonempty_list.t = ( :: ) of ('a * 'a list)
 
   let map { arg_spec; arg_compute } ~f =
-    { arg_spec; arg_compute = (fun raw_arg_table -> f (arg_compute raw_arg_table)) }
+    { arg_spec; arg_compute = (fun context -> f (arg_compute context)) }
   ;;
 
   let both x y =
     { arg_spec = Spec.merge x.arg_spec y.arg_spec
     ; arg_compute =
-        (fun raw_arg_table ->
-          let x_value = x.arg_compute raw_arg_table in
-          let y_value = y.arg_compute raw_arg_table in
+        (fun context ->
+          let x_value = x.arg_compute context in
+          let y_value = y.arg_compute context in
           x_value, y_value)
     }
   ;;
@@ -796,8 +833,8 @@ module Arg_parser = struct
   let named_multi_gen info conv =
     { arg_spec = Spec.named info
     ; arg_compute =
-        (fun raw_arg_table ->
-          Raw_arg_table.get_opts_names_by_name raw_arg_table info.names
+        (fun context ->
+          Raw_arg_table.get_opts_names_by_name context.raw_arg_table info.names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
             | Ok value -> value
@@ -878,7 +915,7 @@ module Arg_parser = struct
     let names = names_of_strings names in
     { arg_spec = Spec.flag names ~desc
     ; arg_compute =
-        (fun raw_arg_table -> Raw_arg_table.get_flag_count_names raw_arg_table names)
+        (fun context -> Raw_arg_table.get_flag_count_names context.raw_arg_table names)
     }
   ;;
 
@@ -904,8 +941,8 @@ module Arg_parser = struct
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required)
     ; arg_compute =
-        (fun raw_arg_table ->
-          Raw_arg_table.get_pos raw_arg_table i
+        (fun context ->
+          Raw_arg_table.get_pos context.raw_arg_table i
           |> Option.map ~f:(fun x ->
             match conv.parse x with
             | Ok x -> x
@@ -931,8 +968,10 @@ module Arg_parser = struct
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required)
     ; arg_compute =
-        (fun raw_arg_table ->
-          let left, _ = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
+        (fun context ->
+          let left, _ =
+            List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i
+          in
           List.mapi left ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -950,8 +989,10 @@ module Arg_parser = struct
              i
              ~value_name:(Option.value value_name ~default:conv.default_value_name))
     ; arg_compute =
-        (fun raw_arg_table ->
-          let _, right = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
+        (fun context ->
+          let _, right =
+            List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i
+          in
           List.mapi right ~f:(fun i x ->
             match conv.parse x with
             | Ok x -> x
@@ -962,13 +1003,14 @@ module Arg_parser = struct
 
   let pos_all ?value_name conv = pos_right ?value_name 0 conv
 
-  let eval t command_line =
-    let arg_table =
-      match Raw_arg_table.parse t.arg_spec command_line with
+  let eval t ~args ~subcommand =
+    let raw_arg_table =
+      match Raw_arg_table.parse t.arg_spec args with
       | Ok x -> x
       | Error e -> raise (Parse_error.E e)
     in
-    t.arg_compute arg_table
+    let context = { Context.raw_arg_table; subcommand } in
+    t.arg_compute context
   ;;
 
   let validate t =
@@ -980,17 +1022,26 @@ module Arg_parser = struct
     | Error e -> raise (Spec_error.E e)
   ;;
 
+  let pp_help ppf arg_spec ~subcommand =
+    Format.pp_print_string ppf "Usage:";
+    List.iter subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
+    Spec.usage ppf arg_spec;
+    Format.pp_print_newline ppf ();
+    Format.pp_print_newline ppf ();
+    Spec.named_help ppf arg_spec
+  ;;
+
   let add_help { arg_spec; arg_compute } =
-    let help_spec = Spec.flag help_names ~desc:None in
+    let help_spec = Spec.flag help_names ~desc:(Some "Print help") in
     let arg_spec = Spec.merge arg_spec help_spec in
     { arg_spec
     ; arg_compute =
-        (fun raw_arg_table ->
-          if Raw_arg_table.get_flag_count_names raw_arg_table help_names > 0
+        (fun context ->
+          if Raw_arg_table.get_flag_count_names context.raw_arg_table help_names > 0
           then (
-            Spec.usage Format.std_formatter arg_spec;
-            failwith "todo")
-          else arg_compute raw_arg_table)
+            pp_help Format.std_formatter arg_spec ~subcommand:context.subcommand;
+            exit 0)
+          else arg_compute context)
     }
   ;;
 
@@ -1021,36 +1072,37 @@ module Command = struct
 
   type 'a traverse =
     { term : 'a Arg_parser.t
-    ; command_line : string list
+    ; args : string list
+    ; subcommand : string list
     }
 
-  let rec traverse t command_line =
-    match t, command_line with
-    | Singleton term, command_line -> Ok { term; command_line }
+  let rec traverse t args subcommand_acc =
+    match t, args with
+    | Singleton term, args -> Ok { term; args; subcommand = List.rev subcommand_acc }
     | Group { children; default_term }, x :: xs ->
       let subcommand =
         List.find_map children ~f:(fun (name, command) ->
           if String.equal (Name.to_string name) x then Some command else None)
       in
       (match subcommand with
-       | Some subcommand -> traverse subcommand xs
+       | Some subcommand -> traverse subcommand xs (x :: subcommand_acc)
        | None ->
          (match default_term with
-          | Some term -> Ok { term; command_line = x :: xs }
+          | Some term -> Ok { term; args = x :: xs; subcommand = List.rev subcommand_acc }
           | None -> Error Parse_error.Incomplete_command))
     | Group { children = _; default_term }, [] ->
       (match default_term with
-       | Some term -> Ok { term; command_line = [] }
+       | Some term -> Ok { term; args = []; subcommand = List.rev subcommand_acc }
        | None -> Error Parse_error.Incomplete_command)
   ;;
 
-  let eval t command_line =
-    let { term; command_line } =
-      match traverse t command_line with
+  let eval t (command_line : Command_line.t) =
+    let { term; args; subcommand } =
+      match traverse t command_line.args [ command_line.program ] with
       | Ok x -> x
       | Error e -> raise (Parse_error.E e)
     in
-    Arg_parser.eval term command_line
+    Arg_parser.eval term ~args ~subcommand
   ;;
 
   let run t =

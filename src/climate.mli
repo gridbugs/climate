@@ -1,3 +1,10 @@
+module Command_line : sig
+  type t =
+    { program : string
+    ; args : string list
+    }
+end
+
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
   type 'a parse = string -> ('a, [ `Msg of string ]) result
@@ -113,7 +120,7 @@ module Command : sig
 
   (** Run the command line parser on a given list of terms. Raises a
       [Parse_error.E] if the command line is invalid. *)
-  val eval : 'a t -> string list -> 'a
+  val eval : 'a t -> Command_line.t -> 'a
 
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)

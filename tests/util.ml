@@ -1,8 +1,8 @@
 open Climate
 
-let eval_and_print_parse_error (command : 'a Command.t) command_line =
+let eval_and_print_parse_error (command : 'a Command.t) args =
   try
-    let _ : 'a = Command.eval command command_line in
+    let _ : 'a = Command.eval command { Command_line.args; program = "foo.exe" } in
     ()
   with
   | Parse_error.E error -> print_endline (Parse_error.to_string error)
