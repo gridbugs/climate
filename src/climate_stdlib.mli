@@ -37,6 +37,7 @@ module List : sig
 
   val find_duplicate : eq:('a -> 'a -> bool) -> 'a t -> 'a option
   val split_n : 'a t -> int -> 'a t * 'a t
+  val is_empty : 'a t -> bool
 end
 
 module Map : sig
@@ -59,6 +60,7 @@ module Nonempty_list : sig
   val of_list : 'a list -> 'a t option
   val to_list : 'a t -> 'a list
   val map : 'a t -> f:('a -> 'b) -> 'b t
+  val hd : 'a t -> 'a
 end
 
 module Nonnegative_int : sig

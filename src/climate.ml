@@ -123,6 +123,12 @@ module Spec_error = struct
     | No_such_enum_value of { valid_names : string list }
     | Gap_in_positional_argument_range of int
     | Name_reserved_for_help of Name.t
+    | Positional_argument_collision_with_different_value_names of
+        { index : int
+        ; value_name1 : string
+        ; value_name2 : string
+        }
+    | Conflicting_requiredness_for_positional_argument of int
 
   exception E of t
 
@@ -166,6 +172,19 @@ module Spec_error = struct
       sprintf
         "The name %S can't be used as it's reserved for printing help messages."
         (Name.to_string_with_dashes name)
+    | Positional_argument_collision_with_different_value_names
+        { index; value_name1; value_name2 } ->
+      sprintf
+        "The positional argument with index %d was defined multiple times with different \
+         value names: %S and %S"
+        index
+        value_name1
+        value_name2
+    | Conflicting_requiredness_for_positional_argument index ->
+      sprintf
+        "Multiple positional arguments registered at the same index (%d) with different \
+         requiredness"
+        index
   ;;
 end
 
@@ -195,19 +214,32 @@ module Spec = struct
     module Info = struct
       type t =
         { names : Name.t Nonempty_list.t
-        ; has_arg : [ `No | `Yes_with_value_name of string ]
+        ; has_param : [ `No | `Yes_with_value_name of string ]
         ; default_string :
             string option (* default value to display in documentation (if any) *)
         ; required : bool (* determines if argument is shown in usage string *)
+        ; desc : string option
         }
 
-      let has_arg t =
-        match t.has_arg with
+      let has_param t =
+        match t.has_param with
         | `No -> false
         | `Yes_with_value_name _ -> true
       ;;
 
-      let flag names = { names; has_arg = `No; default_string = None; required = false }
+      let flag names ~desc =
+        { names; has_param = `No; default_string = None; required = false; desc }
+      ;;
+
+      let long_name { names; _ } =
+        List.find_opt (Nonempty_list.to_list names) ~f:Name.is_long
+      ;;
+
+      let choose_name_long_if_possible t =
+        match long_name t with
+        | Some name -> name
+        | None -> Nonempty_list.hd t.names
+      ;;
     end
 
     type t = { infos : Info.t list }
@@ -240,40 +272,123 @@ module Spec = struct
       | None -> Ok ()
       | Some help_name -> Error (Spec_error.Name_reserved_for_help help_name)
     ;;
+
+    let all_required { infos } =
+      List.filter infos ~f:(fun { Info.required; _ } -> required)
+    ;;
+
+    let all_optional { infos } =
+      List.filter infos ~f:(fun { Info.required; _ } -> not required)
+    ;;
   end
 
   module Positional = struct
-    (* Keeps track of which indices of positional argument have parsers registered *)
-    type t =
-      { all_above_inclusive : int option
-      ; other : Int.Set.t
+    type all_above_inclusive =
+      { index : int
+      ; value_name : string
       }
 
-    let empty = { all_above_inclusive = None; other = Int.Set.empty }
-    let add_index t index = { t with other = Int.Set.add index t.other }
+    type single_arg =
+      { required : bool
+      ; value_name : string
+      }
 
-    let add_all_above_inclusive t index =
-      match t.all_above_inclusive with
-      | Some x when x < index -> t
-      | _ -> { t with all_above_inclusive = Some index }
+    (* Keeps track of which indices of positional argument have parsers registered *)
+    type t =
+      { all_above_inclusive : all_above_inclusive option
+      ; other_value_names_by_index : single_arg Int.Map.t
+      }
+
+    let empty = { all_above_inclusive = None; other_value_names_by_index = Int.Map.empty }
+
+    let check_value_names index value_name1 value_name2 =
+      if not (String.equal value_name1 value_name2)
+      then
+        raise
+          Spec_error.(
+            E
+              (Positional_argument_collision_with_different_value_names
+                 { index; value_name1; value_name2 }))
     ;;
 
-    let add_all_below_exclusive t index =
-      let other =
-        Seq.init index Fun.id |> Seq.fold_left (fun acc i -> Int.Set.add i acc) t.other
+    let trim_map t =
+      match t.all_above_inclusive with
+      | None -> t
+      | Some all_above_inclusive ->
+        let other_value_names_by_index =
+          Int.Map.filter
+            t.other_value_names_by_index
+            ~f:(fun index { value_name; required } ->
+              if index >= all_above_inclusive.index
+              then (
+                check_value_names index value_name all_above_inclusive.value_name;
+                if required
+                then
+                  raise
+                    Spec_error.(
+                      E (Conflicting_requiredness_for_positional_argument index));
+                false)
+              else true)
+        in
+        { t with other_value_names_by_index }
+    ;;
+
+    let add_index t index ~value_name ~required =
+      let other_value_names_by_index =
+        Int.Map.update t.other_value_names_by_index ~key:index ~f:(function
+          | None -> Some { value_name; required }
+          | Some x ->
+            check_value_names index x.value_name value_name;
+            if x.required <> required
+            then
+              raise
+                Spec_error.(E (Conflicting_requiredness_for_positional_argument index));
+            Some x)
       in
-      { t with other }
+      trim_map { t with other_value_names_by_index }
+    ;;
+
+    let add_all_above_inclusive t index ~value_name =
+      match t.all_above_inclusive with
+      | Some x when x.index < index ->
+        check_value_names index x.value_name value_name;
+        t
+      | _ -> trim_map { t with all_above_inclusive = Some { index; value_name } }
+    ;;
+
+    let add_all_below_exclusive t index ~value_name ~required =
+      Seq.init index Fun.id
+      |> Seq.fold_left (add_index ~value_name ~required) t
+      |> trim_map
     ;;
 
     let merge x y =
-      let other = Int.Set.union x.other y.other in
       let all_above_inclusive =
         match x.all_above_inclusive, y.all_above_inclusive with
         | None, None -> None
         | Some a, None | None, Some a -> Some a
-        | Some x, Some y -> Some (Int.min x y)
+        | Some x, Some y ->
+          check_value_names (Int.max x.index y.index) x.value_name y.value_name;
+          let index = Int.min x.index y.index in
+          Some { index; value_name = x.value_name }
       in
-      { all_above_inclusive; other }
+      let other_value_names_by_index =
+        Int.Map.merge
+          x.other_value_names_by_index
+          y.other_value_names_by_index
+          ~f:(fun index x y ->
+            match x, y with
+            | None, None -> None
+            | Some value_name, None | None, Some value_name -> Some value_name
+            | Some x, Some y ->
+              check_value_names index x.value_name y.value_name;
+              if x.required <> y.required
+              then
+                raise
+                  Spec_error.(E (Conflicting_requiredness_for_positional_argument index));
+              Some x)
+      in
+      trim_map { all_above_inclusive; other_value_names_by_index }
     ;;
 
     let index i = add_index empty i
@@ -283,11 +398,14 @@ module Spec = struct
     (* Check that there are no gaps in the declared positional arguments (E.g.
        if the parser would interpret the argument at position 0 and 2 but not 1
        it's probably an error.) *)
-    let validate_no_gaps { all_above_inclusive; other } =
+    let validate_no_gaps { all_above_inclusive; other_value_names_by_index } =
+      let other_indices =
+        Int.Map.to_seq other_value_names_by_index |> Seq.map fst |> Int.Set.of_seq
+      in
       let set_to_validate =
         match all_above_inclusive with
-        | Some i -> Int.Set.add i other
-        | None -> other
+        | Some { index; _ } -> Int.Set.add index other_indices
+        | None -> other_indices
       in
       match Int.Set.max_elt_opt set_to_validate with
       | None -> Ok ()
@@ -300,10 +418,17 @@ module Spec = struct
          | None -> Ok ())
     ;;
 
-    let arg_count { all_above_inclusive; other } =
+    let arg_count { all_above_inclusive; other_value_names_by_index } =
       match all_above_inclusive with
       | Some _ -> `Unlimited
-      | None -> `Limited (Int.Set.cardinal other)
+      | None -> `Limited (Int.Map.cardinal other_value_names_by_index)
+    ;;
+
+    let all_required_value_names { other_value_names_by_index; _ } =
+      Int.Map.to_seq other_value_names_by_index
+      |> Seq.filter_map (fun (_, { required; value_name }) ->
+        if required then Some value_name else None)
+      |> List.of_seq
     ;;
   end
 
@@ -326,7 +451,28 @@ module Spec = struct
     { named; positional = Positional.empty }
   ;;
 
-  let flag names = named (Named.Info.flag names)
+  let flag names ~desc = named (Named.Info.flag names ~desc)
+
+  let usage ppf { named; positional } =
+    let named_optional = Named.all_optional named in
+    if not (List.is_empty named_optional) then Format.pp_print_string ppf " [OPTIONS]";
+    let named_required = Named.all_required named in
+    List.iter named_required ~f:(fun (info : Named.Info.t) ->
+      match info.has_param with
+      | `No ->
+        (* there should be no required arguments with no parameters *)
+        ()
+      | `Yes_with_value_name value_name ->
+        let name = Named.Info.choose_name_long_if_possible info in
+        if Name.is_long name
+        then Format.fprintf ppf " %s=<%s>" (Name.to_string_with_dashes name) value_name
+        else Format.fprintf ppf " %s<%s>" (Name.to_string_with_dashes name) value_name);
+    Positional.all_required_value_names positional
+    |> List.iter ~f:(fun value_name -> Format.fprintf ppf " <%s>" value_name);
+    match positional.all_above_inclusive with
+    | Some { value_name; _ } -> Format.fprintf ppf "[%s]..." value_name
+    | None -> ()
+  ;;
 end
 
 module Raw_arg_table = struct
@@ -349,7 +495,7 @@ module Raw_arg_table = struct
     match Spec.Named.get_info_by_name t.spec.named name with
     | None -> raise (Implementation_error.E (No_such_arg name))
     | Some info ->
-      if Spec.Named.Info.has_arg info
+      if Spec.Named.Info.has_param info
       then raise (Implementation_error.E (Not_a_flag name))
       else Name.Map.find t.flag_counts name |> Option.value ~default:0
   ;;
@@ -358,7 +504,7 @@ module Raw_arg_table = struct
     match Spec.Named.get_info_by_name t.spec.named name with
     | None -> raise (Implementation_error.E (No_such_arg name))
     | Some info ->
-      if Spec.Named.Info.has_arg info
+      if Spec.Named.Info.has_param info
       then Name.Map.find t.opts name |> Option.value ~default:[]
       else raise (Implementation_error.E (Not_an_opt name))
   ;;
@@ -426,7 +572,7 @@ module Raw_arg_table = struct
            (match Spec.Named.get_info_by_name t.spec.named name with
             | None -> Error (Parse_error.No_such_arg name)
             | Some info ->
-              if Spec.Named.Info.has_arg info
+              if Spec.Named.Info.has_param info
               then Ok (add_opt t ~name ~value, remaining_args)
               else Error (Parse_error.Flag_has_param { name; value })))
       | None ->
@@ -437,7 +583,7 @@ module Raw_arg_table = struct
            (match Spec.Named.get_info_by_name t.spec.named name with
             | None -> Error (Parse_error.No_such_arg name)
             | Some info ->
-              if Spec.Named.Info.has_arg info
+              if Spec.Named.Info.has_param info
               then (
                 match remaining_args with
                 | [] -> Error (Parse_error.Arg_lacks_param name)
@@ -449,7 +595,7 @@ module Raw_arg_table = struct
     match Spec.Named.get_info_by_name t.spec.named name with
     | None -> Error (Parse_error.No_such_arg name)
     | Some info ->
-      if Spec.Named.Info.has_arg info
+      if Spec.Named.Info.has_param info
       then
         if String.is_empty remaining_short_sequence
         then (
@@ -671,43 +817,51 @@ module Arg_parser = struct
             E (Named_opt_appeared_multiple_times (info.names, List.length many))))
   ;;
 
-  let named_multi names conv =
+  let named_multi ?desc ?value_name names conv =
     named_multi_gen
       { names = names_of_strings names
-      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; has_param =
+          `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = false
+      ; desc
       }
       conv
   ;;
 
-  let named_opt names conv =
+  let named_opt ?desc ?value_name names conv =
     named_opt_gen
       { names = names_of_strings names
-      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; has_param =
+          `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = false
+      ; desc
       }
       conv
   ;;
 
-  let named_opt_with_default names conv ~default =
+  let named_with_default ?desc ?value_name names conv ~default =
     named_opt_gen
       { names = names_of_strings names
-      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; has_param =
+          `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = Some (conv_value_to_string conv default)
       ; required = false
+      ; desc
       }
       conv
     >>| Option.value ~default
   ;;
 
-  let named_req names conv =
+  let named_req ?desc ?value_name names conv =
     named_multi_gen
       { names = names_of_strings names
-      ; has_arg = `Yes_with_value_name conv.default_value_name
+      ; has_param =
+          `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = true
+      ; desc
       }
       conv
     |> map ~f:(function
@@ -720,16 +874,16 @@ module Arg_parser = struct
               (Named_req_appeared_multiple_times (names_of_strings names, List.length many))))
   ;;
 
-  let flag_count names =
+  let flag_count ?desc names =
     let names = names_of_strings names in
-    { arg_spec = Spec.flag names
+    { arg_spec = Spec.flag names ~desc
     ; arg_compute =
         (fun raw_arg_table -> Raw_arg_table.get_flag_count_names raw_arg_table names)
     }
   ;;
 
-  let flag names =
-    flag_count names
+  let flag ?desc names =
+    flag_count ?desc names
     |> map ~f:(function
       | 0 -> false
       | 1 -> true
@@ -737,13 +891,18 @@ module Arg_parser = struct
         raise Parse_error.(E (Flag_appeared_multiple_times (names_of_strings names, n))))
   ;;
 
-  let pos_opt i conv =
+  let pos_single_gen i conv ~value_name ~required =
     let i =
       match Nonnegative_int.of_int i with
       | Some _ -> i
       | None -> raise Spec_error.(E (Negative_position i))
     in
-    { arg_spec = Spec.positional (Spec.Positional.index i)
+    { arg_spec =
+        Spec.positional
+          (Spec.Positional.index
+             i
+             ~value_name:(Option.value value_name ~default:conv.default_value_name)
+             ~required)
     ; arg_compute =
         (fun raw_arg_table ->
           Raw_arg_table.get_pos raw_arg_table i
@@ -755,15 +914,22 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_req i conv =
-    pos_opt i conv
+  let pos_opt ?value_name i conv = pos_single_gen i conv ~value_name ~required:false
+
+  let pos_req ?value_name i conv =
+    pos_single_gen i conv ~value_name ~required:true
     |> map ~f:(function
       | Some x -> x
       | None -> raise Parse_error.(E (Pos_req_missing i)))
   ;;
 
-  let pos_left i conv =
-    { arg_spec = Spec.positional (Spec.Positional.all_below_exclusive i)
+  let pos_left_gen i conv ~value_name ~required =
+    { arg_spec =
+        Spec.positional
+          (Spec.Positional.all_below_exclusive
+             i
+             ~value_name:(Option.value value_name ~default:conv.default_value_name)
+             ~required)
     ; arg_compute =
         (fun raw_arg_table ->
           let left, _ = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
@@ -775,8 +941,14 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_right i conv =
-    { arg_spec = Spec.positional (Spec.Positional.all_above_inclusive i)
+  let pos_left ?value_name i conv = pos_left_gen i conv ~value_name ~required:false
+
+  let pos_right ?value_name i conv =
+    { arg_spec =
+        Spec.positional
+          (Spec.Positional.all_above_inclusive
+             i
+             ~value_name:(Option.value value_name ~default:conv.default_value_name))
     ; arg_compute =
         (fun raw_arg_table ->
           let _, right = List.split_n (Raw_arg_table.get_pos_all raw_arg_table) i in
@@ -788,7 +960,7 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_all conv = pos_right 0 conv
+  let pos_all ?value_name conv = pos_right ?value_name 0 conv
 
   let eval t command_line =
     let arg_table =
@@ -809,12 +981,15 @@ module Arg_parser = struct
   ;;
 
   let add_help { arg_spec; arg_compute } =
-    let help_spec = Spec.flag help_names in
-    { arg_spec = Spec.merge arg_spec help_spec
+    let help_spec = Spec.flag help_names ~desc:None in
+    let arg_spec = Spec.merge arg_spec help_spec in
+    { arg_spec
     ; arg_compute =
         (fun raw_arg_table ->
           if Raw_arg_table.get_flag_count_names raw_arg_table help_names > 0
-          then failwith "help"
+          then (
+            Spec.usage Format.std_formatter arg_spec;
+            failwith "todo")
           else arg_compute raw_arg_table)
     }
   ;;

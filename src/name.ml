@@ -47,6 +47,18 @@ let kind t =
     `Long
 ;;
 
+let is_short t =
+  match kind t with
+  | `Short -> true
+  | `Long -> false
+;;
+
+let is_long t =
+  match kind t with
+  | `Short -> false
+  | `Long -> true
+;;
+
 let to_string_with_dashes t =
   let prefix =
     match kind t with

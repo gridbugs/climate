@@ -51,43 +51,49 @@ module Arg_parser : sig
   val const : 'a -> 'a t
 
   (** A named argument that may appear multiple times on the command line. *)
-  val named_multi : names -> 'a conv -> 'a list t
+  val named_multi : ?desc:string -> ?value_name:string -> names -> 'a conv -> 'a list t
 
   (** A named argument that may appear at most once on the command line. *)
-  val named_opt : names -> 'a conv -> 'a option t
+  val named_opt : ?desc:string -> ?value_name:string -> names -> 'a conv -> 'a option t
 
   (** A named argument that may appear at most once on the command line. If the
       argument is not passed then a given default value will be used instead. *)
-  val named_opt_with_default : names -> 'a conv -> default:'a -> 'a t
+  val named_with_default
+    :  ?desc:string
+    -> ?value_name:string
+    -> names
+    -> 'a conv
+    -> default:'a
+    -> 'a t
 
   (** A named argument that must appear exactly once on the command line. *)
-  val named_req : names -> 'a conv -> 'a t
+  val named_req : ?desc:string -> ?value_name:string -> names -> 'a conv -> 'a t
 
   (** A flag that may appear multiple times on the command line.
       Evaluates to the number of times the flag appeared. *)
-  val flag_count : names -> int t
+  val flag_count : ?desc:string -> names -> int t
 
   (** A flag that may appear at most once on the command line. *)
-  val flag : names -> bool t
+  val flag : ?desc:string -> names -> bool t
 
   (** [pos i conv] declares an optional anonymous positional argument at position
       [i] (starting at 0). *)
-  val pos_opt : int -> 'a conv -> 'a option t
+  val pos_opt : ?value_name:string -> int -> 'a conv -> 'a option t
 
   (** [pos i conv] declares a required anonymous positional argument at position
       [i] (starting at 0). *)
-  val pos_req : int -> 'a conv -> 'a t
+  val pos_req : ?value_name:string -> int -> 'a conv -> 'a t
 
   (** Parses all positional arguments. *)
-  val pos_all : 'a conv -> 'a list t
+  val pos_all : ?value_name:string -> 'a conv -> 'a list t
 
   (** [pos_left i conv] parses all positional arguments at positions less than
       i. *)
-  val pos_left : int -> 'a conv -> 'a list t
+  val pos_left : ?value_name:string -> int -> 'a conv -> 'a list t
 
   (** [pos_left i conv] parses all positional arguments at positions greater
       than or equal to i. *)
-  val pos_right : int -> 'a conv -> 'a list t
+  val pos_right : ?value_name:string -> int -> 'a conv -> 'a list t
 end
 
 module Command : sig

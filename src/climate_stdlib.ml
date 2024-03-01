@@ -66,6 +66,11 @@ module List = struct
         let l, r = split_n xs (n - 1) in
         x :: l, r)
   ;;
+
+  let is_empty = function
+    | [] -> true
+    | _ -> false
+  ;;
 end
 
 module Map = struct
@@ -112,6 +117,10 @@ module Nonempty_list = struct
 
   let to_list (x :: xs) = List.(x :: xs)
   let map (x :: xs) ~f = f x :: List.map xs ~f
+
+  let hd = function
+    | x :: _ -> x
+  ;;
 end
 
 module Nonnegative_int = struct
