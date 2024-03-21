@@ -1105,10 +1105,15 @@ module Command = struct
   type 'a t =
     | Singleton of 'a Arg_parser.t
     | Group of
-        { children : (Info.t * 'a t) list
+        { children : 'a subcommand list
         ; default_arg_parser : 'a Arg_parser.t option
         }
     | Internal of internal
+
+  and 'a subcommand =
+    { info : Info.t
+    ; command : 'a t
+    }
 
   let rec to_autocompletion_spec = function
     | Singleton arg_parser ->
@@ -1123,13 +1128,13 @@ module Command = struct
       in
       { Autocompletion.Spec.args
       ; subcommands =
-          List.filter_map children ~f:(fun ((info : Info.t), t) ->
+          List.filter_map children ~f:(fun { info; command } ->
             if info.hidden
             then None
             else
               Some
                 { Autocompletion.Spec.name = Name.to_string info.name
-                ; spec = to_autocompletion_spec t
+                ; spec = to_autocompletion_spec command
                 })
       }
     | Internal _ -> Autocompletion.Spec.empty
@@ -1141,19 +1146,12 @@ module Command = struct
 
   let singleton term = Singleton (Arg_parser.finalize term)
 
-  type 'a group_arg =
-    | Subcommand of string * 'a t
-    | Hidden of string * 'a t
+  let subcommand ?(hidden = false) name_string command =
+    { info = { Info.name = name_of_string_exn name_string; hidden }; command }
+  ;;
 
   let group ?default_arg_parser children =
     let default_arg_parser = Option.map default_arg_parser ~f:Arg_parser.finalize in
-    let children =
-      List.map children ~f:(function
-        | Subcommand (name_string, subcommand) ->
-          { Info.name = name_of_string_exn name_string; hidden = false }, subcommand
-        | Hidden (name_string, subcommand) ->
-          { Info.name = name_of_string_exn name_string; hidden = true }, subcommand)
-    in
     Group { children; default_arg_parser }
   ;;
 
@@ -1172,7 +1170,7 @@ module Command = struct
         { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
     | Group { children; default_arg_parser }, x :: xs ->
       let subcommand =
-        List.find_map children ~f:(fun (({ name; _ } : Info.t), command) ->
+        List.find_map children ~f:(fun { info = { name; _ }; command } ->
           if String.equal (Name.to_string name) x then Some command else None)
       in
       (match subcommand with

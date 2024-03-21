@@ -17,16 +17,16 @@ let bisect_common =
 let () =
   let open Command in
   group
-    [ Subcommand ("config", singleton Arg_parser.unit)
-    ; Subcommand ("commit", singleton commit)
-    ; Subcommand
-        ( "bisect"
-        , group
-            ~default_arg_parser:Arg_parser.unit
-            [ Subcommand ("start", singleton bisect_common)
-            ; Subcommand ("replay", singleton bisect_common)
-            ] )
-    ; Hidden ("__internal", print_autocompletion_script_bash)
+    [ subcommand "config" (singleton Arg_parser.unit)
+    ; subcommand "commit" (singleton commit)
+    ; subcommand
+        "bisect"
+        (group
+           ~default_arg_parser:Arg_parser.unit
+           [ subcommand "start" (singleton bisect_common)
+           ; subcommand "replay" (singleton bisect_common)
+           ])
+    ; subcommand ~hidden:true "__internal" print_autocompletion_script_bash
     ]
   |> run
 ;;

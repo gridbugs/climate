@@ -91,7 +91,7 @@ let%expect_test "optional option passed multiple times" =
 
 let%expect_test "incomplete subcommand" =
   let term = Arg_parser.const () in
-  let command = Command.group [ Subcommand ("foo", Command.singleton term) ] in
+  let command = Command.group [ Command.subcommand "foo" (Command.singleton term) ] in
   run command [ "foo" ];
   [%expect {| |}];
   run command [];

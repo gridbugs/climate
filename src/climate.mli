@@ -113,9 +113,9 @@ module Command : sig
       well-formed and raises a [Spec_error.E] if it's invalid. *)
   val singleton : 'a Arg_parser.t -> 'a t
 
-  type 'a group_arg =
-    | Subcommand of string * 'a t
-    | Hidden of string * 'a t
+  type 'a subcommand
+
+  val subcommand : ?hidden:bool -> string -> 'a t -> 'a subcommand
 
   (** [group children] returns a command with a hierarchy of subcommands, the
       leaves of which will be either singletons or empty groups (groups with an
@@ -123,7 +123,7 @@ module Command : sig
       sequences of subcommands may terminating with this command and will be
       passed with that argument. Performs some checks that each parser is
       well-formed and raises a [Spec_error.E] if an invalid parser is found.*)
-  val group : ?default_arg_parser:'a Arg_parser.t -> 'a group_arg list -> 'a t
+  val group : ?default_arg_parser:'a Arg_parser.t -> 'a subcommand list -> 'a t
 
   val print_autocompletion_script_bash : _ t
 
