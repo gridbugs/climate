@@ -289,6 +289,19 @@ module Spec = struct
     let all_optional { infos } =
       List.filter infos ~f:(fun { Info.required; _ } -> not required)
     ;;
+
+    let to_autocompletion_arg { infos } =
+      List.concat_map infos ~f:(fun (info : Info.t) ->
+        let has_param =
+          match info.has_param with
+          | `No -> false
+          | `Yes_with_value_name _ -> true
+        in
+        List.filter_map (Nonempty_list.to_list info.names) ~f:(fun name ->
+          if Name.is_long name
+          then Some { Autocompletion.Arg.name = Name.to_string name; has_param }
+          else None))
+    ;;
   end
 
   module Positional = struct
@@ -829,6 +842,7 @@ module Arg_parser = struct
   let ( and+ ) = both
   let names_of_strings = Nonempty_list.map ~f:name_of_string_exn
   let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
+  let unit = const ()
 
   let named_multi_gen info conv =
     { arg_spec = Spec.named info
@@ -1049,60 +1063,157 @@ module Arg_parser = struct
     validate t;
     add_help t
   ;;
+
+  let to_autocompletion_arg { arg_spec; _ } =
+    Spec.Named.to_autocompletion_arg arg_spec.named
+  ;;
+end
+
+module Autocompletion_args = struct
+  type t = { program_name : string }
+
+  let arg_parser =
+    let open Arg_parser in
+    let+ program_name =
+      named_opt
+        ~desc:
+          "Name to register this autocompletion script with in the shell. Should be the \
+           name of this program's executable. Will default to argv[0]."
+        ~value_name:"PROGRAM"
+        [ "program-name" ]
+        string
+    in
+    let program_name =
+      match program_name with
+      | Some program_name -> program_name
+      | None -> Sys.argv.(0)
+    in
+    { program_name }
+  ;;
 end
 
 module Command = struct
+  type internal = Print_autocompletion_script_bash
+
+  module Info = struct
+    type t =
+      { name : Name.t
+      ; hidden : bool
+      }
+  end
+
   type 'a t =
     | Singleton of 'a Arg_parser.t
     | Group of
-        { children : (Name.t * 'a t) list
-        ; default_term : 'a Arg_parser.t option
+        { children : (Info.t * 'a t) list
+        ; default_arg_parser : 'a Arg_parser.t option
         }
+    | Internal of internal
+
+  let rec to_autocompletion_spec = function
+    | Singleton arg_parser ->
+      { Autocompletion.Spec.args = Arg_parser.to_autocompletion_arg arg_parser
+      ; subcommands = []
+      }
+    | Group { children; default_arg_parser } ->
+      let args =
+        match default_arg_parser with
+        | None -> []
+        | Some default_arg_parser -> Arg_parser.to_autocompletion_arg default_arg_parser
+      in
+      { Autocompletion.Spec.args
+      ; subcommands =
+          List.filter_map children ~f:(fun ((info : Info.t), t) ->
+            if info.hidden
+            then None
+            else
+              Some
+                { Autocompletion.Spec.name = Name.to_string info.name
+                ; spec = to_autocompletion_spec t
+                })
+      }
+    | Internal _ -> Autocompletion.Spec.empty
+  ;;
+
+  let autocompletion_script_bash t ~program_name =
+    to_autocompletion_spec t |> Autocompletion.generate_bash ~program_name
+  ;;
 
   let singleton term = Singleton (Arg_parser.finalize term)
 
-  let group ?default_term children =
-    let default_term = Option.map default_term ~f:Arg_parser.finalize in
+  type 'a group_arg =
+    | Subcommand of string * 'a t
+    | Hidden of string * 'a t
+
+  let group ?default_arg_parser children =
+    let default_arg_parser = Option.map default_arg_parser ~f:Arg_parser.finalize in
     let children =
-      List.map children ~f:(fun (name_string, command) ->
-        name_of_string_exn name_string, command)
+      List.map children ~f:(function
+        | Subcommand (name_string, subcommand) ->
+          { Info.name = name_of_string_exn name_string; hidden = false }, subcommand
+        | Hidden (name_string, subcommand) ->
+          { Info.name = name_of_string_exn name_string; hidden = true }, subcommand)
     in
-    Group { children; default_term }
+    Group { children; default_arg_parser }
   ;;
 
+  let print_autocompletion_script_bash = Internal Print_autocompletion_script_bash
+
   type 'a traverse =
-    { term : 'a Arg_parser.t
+    { operation : [ `Arg_parser of 'a Arg_parser.t | `Internal of internal ]
     ; args : string list
     ; subcommand : string list
     }
 
   let rec traverse t args subcommand_acc =
     match t, args with
-    | Singleton term, args -> Ok { term; args; subcommand = List.rev subcommand_acc }
-    | Group { children; default_term }, x :: xs ->
+    | Singleton arg_parser, args ->
+      Ok
+        { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
+    | Group { children; default_arg_parser }, x :: xs ->
       let subcommand =
-        List.find_map children ~f:(fun (name, command) ->
+        List.find_map children ~f:(fun (({ name; _ } : Info.t), command) ->
           if String.equal (Name.to_string name) x then Some command else None)
       in
       (match subcommand with
        | Some subcommand -> traverse subcommand xs (x :: subcommand_acc)
        | None ->
-         (match default_term with
-          | Some term -> Ok { term; args = x :: xs; subcommand = List.rev subcommand_acc }
+         (match default_arg_parser with
+          | Some arg_parser ->
+            Ok
+              { operation = `Arg_parser arg_parser
+              ; args = x :: xs
+              ; subcommand = List.rev subcommand_acc
+              }
           | None -> Error Parse_error.Incomplete_command))
-    | Group { children = _; default_term }, [] ->
-      (match default_term with
-       | Some term -> Ok { term; args = []; subcommand = List.rev subcommand_acc }
+    | Group { children = _; default_arg_parser }, [] ->
+      (match default_arg_parser with
+       | Some arg_parser ->
+         Ok
+           { operation = `Arg_parser arg_parser
+           ; args = []
+           ; subcommand = List.rev subcommand_acc
+           }
        | None -> Error Parse_error.Incomplete_command)
+    | Internal internal, args ->
+      Ok { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
   ;;
 
   let eval t (command_line : Command_line.t) =
-    let { term; args; subcommand } =
+    let { operation; args; subcommand } =
       match traverse t command_line.args [ command_line.program ] with
       | Ok x -> x
       | Error e -> raise (Parse_error.E e)
     in
-    Arg_parser.eval term ~args ~subcommand
+    match operation with
+    | `Arg_parser arg_parser -> Arg_parser.eval arg_parser ~args ~subcommand
+    | `Internal Print_autocompletion_script_bash ->
+      let arg_parser = Arg_parser.add_help Autocompletion_args.arg_parser in
+      let { Autocompletion_args.program_name } =
+        Arg_parser.eval arg_parser ~args ~subcommand
+      in
+      print_endline (autocompletion_script_bash t ~program_name);
+      exit 0
   ;;
 
   let run t =

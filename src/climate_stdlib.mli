@@ -38,6 +38,7 @@ module List : sig
   val find_duplicate : eq:('a -> 'a -> bool) -> 'a t -> 'a option
   val split_n : 'a t -> int -> 'a t * 'a t
   val is_empty : 'a t -> bool
+  val filter_opt : 'a option t -> 'a t
 end
 
 module Map : sig

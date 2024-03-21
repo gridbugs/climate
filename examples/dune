@@ -22,3 +22,8 @@
  (names optional_args)
  (libraries climate)
  (modules optional_args))
+
+(executables
+ (names fake_git)
+ (libraries climate)
+ (modules fake_git))

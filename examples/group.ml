@@ -8,11 +8,14 @@ let term name =
 ;;
 
 let () =
-  Command.group
-    [ "foo", Command.singleton (term "foo")
-    ; ( "bar"
-      , Command.group ~default_term:(term "bar") [ "baz", Command.singleton (term "baz") ]
-      )
+  let open Command in
+  group
+    [ Subcommand ("foo", singleton (term "foo"))
+    ; Subcommand
+        ( "bar"
+        , group
+            ~default_arg_parser:(term "bar")
+            [ Subcommand ("baz", singleton (term "baz")) ] )
     ]
-  |> Command.run
+  |> run
 ;;

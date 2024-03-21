@@ -71,6 +71,8 @@ module List = struct
     | [] -> true
     | _ -> false
   ;;
+
+  let filter_opt t = filter_map t ~f:Fun.id
 end
 
 module Map = struct
