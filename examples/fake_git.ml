@@ -4,7 +4,13 @@ let branch_conv =
   let open Arg_parser in
   { string with
     default_value_name = "BRANCH"
-  ; autocompletion_hint = Some (Reentrant (fun _command_line -> [ "main"; "devel" ]))
+  ; autocompletion_hint =
+      Some
+        (Reentrant
+           (fun command_line ->
+             Printf.eprintf "commandline\n";
+             List.iter (fun s -> Printf.eprintf "[%s]\n" s) command_line.args;
+             [ "main"; "devel" ]))
   }
 ;;
 

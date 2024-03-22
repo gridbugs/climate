@@ -1294,8 +1294,6 @@ module Command = struct
                 Raw_arg_table.get_opts
                   context.raw_arg_table
                   reentrant_autocompletion_command_line_name
-                |> List.hd
-                |> String.split_on_char ~sep:' '
                 |> Command_line.of_list
               in
               f command_line |> List.iter ~f:print_endline;
@@ -1324,7 +1322,7 @@ module Command = struct
     in
     let command_line_info =
       { Spec.Named.Info.names = [ reentrant_autocompletion_command_line_name ]
-      ; has_param = `Yes_with_value_name "INT"
+      ; has_param = `Yes_with_value_name "ARG"
       ; default_string = None
       ; required = false
       ; desc = None

@@ -102,13 +102,21 @@ module Spec = struct
                ]
              | Reentrant_index i ->
                let this_subcommand = String.concat ~sep:" " (List.rev command_line_acc) in
-               [ sprintf
-                   "local suggestions=$(%s %s %s=%d %s=\"$COMP_LINE\")"
+               [ "# Populate COMPREPLY by running the exe with a reentrant query."
+               ; "# Each word on the current command is also passed to the program."
+               ; "# The use of eval here is so that quoted words containing spaces are \
+                  not split."
+               ; sprintf
+                   "local suffix=$(eval \"%s_autocompletion_command_line_args \
+                    $COMP_LINE\")"
+                   prefix
+               ; sprintf
+                   "local cmd=\"%s %s %s=%d $suffix\""
                    program_exe
                    this_subcommand
                    (Name.to_string_with_dashes reentrant_autocompletion_query_name)
                    i
-                   (Name.to_string_with_dashes reentrant_autocompletion_command_line_name)
+               ; sprintf "local suggestions=$(eval $cmd)"
                ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
                ])
         in
@@ -144,14 +152,22 @@ module Spec = struct
                       let this_subcommand =
                         String.concat ~sep:" " (List.rev command_line_acc)
                       in
-                      [ sprintf
-                          "local suggestions=$(%s %s %s=%d %s=\"$COMP_LINE\")"
+                      [ "# Populate COMPREPLY by running the exe with a reentrant query."
+                      ; "# Each word on the current command is also passed to the \
+                         program."
+                      ; "# The use of eval here is so that quoted words containing \
+                         spaces are not split."
+                      ; sprintf
+                          "local suffix=$(eval \"%s_autocompletion_command_line_args \
+                           $COMP_LINE\")"
+                          prefix
+                      ; sprintf
+                          "local cmd=\"%s %s %s=%d $suffix\""
                           program_exe
                           this_subcommand
                           (Name.to_string_with_dashes reentrant_autocompletion_query_name)
                           i
-                          (Name.to_string_with_dashes
-                             reentrant_autocompletion_command_line_name)
+                      ; sprintf "local suggestions=$(eval $cmd)"
                       ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
                       ]
                   in
@@ -252,10 +268,21 @@ let preamble ~program_name ~prefix =
     compopt -o filenames
     COMPREPLY=($(compgen -A file -- $1))
 }
+
+# Generates argument list passing command line to reentrant autocompletion.
+# This helper function is used to separate arguments from the $COMP_LINE
+# variable.
+%s_autocompletion_command_line_args() {
+  for word in "$@"; do
+    printf " --%s=\"$word\""
+  done
+}
 |}
     program_name
     prefix
     prefix
+    prefix
+    (Name.to_string reentrant_autocompletion_command_line_name)
 ;;
 
 let completion_function ~prefix ~program_name ~program_exe spec =
