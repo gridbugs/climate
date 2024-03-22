@@ -37,10 +37,14 @@ module Arg_parser : sig
       [eq] is used when printing values to tie a given value of type ['a] to a
       name. *)
   val enum
-    :  (string * 'a) list
+    :  ?default_value_name:string
+    -> (string * 'a) list
     -> eq:('a -> 'a -> bool)
-    -> default_value_name:string
     -> 'a conv
+
+  (** [string_enum values ~eq] returns a conv for a concrete set of possible
+      strings. *)
+  val string_enum : ?default_value_name:string -> string list -> string conv
 
   (** A parser of values of type ['a] *)
   type 'a t

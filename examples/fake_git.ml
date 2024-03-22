@@ -3,8 +3,15 @@ open Climate
 let commit =
   let open Arg_parser in
   let+ _amend = flag [ "amend"; "a" ]
-  and+ _bool = named_opt [ "bool"; "b" ] bool
   and+ _message = named_opt [ "m"; "message" ] string in
+  ()
+;;
+
+let log =
+  let open Arg_parser in
+  let+ _pretty =
+    named_opt [ "pretty"; "p" ] (string_enum [ "full"; "fuller"; "short"; "oneline" ])
+  in
   ()
 ;;
 
@@ -20,6 +27,7 @@ let () =
   group
     [ subcommand "config" (singleton Arg_parser.unit)
     ; subcommand "commit" (singleton commit)
+    ; subcommand "log" (singleton log)
     ; subcommand
         "bisect"
         (group

@@ -95,7 +95,18 @@ module Spec = struct
                 |> String.concat ~sep:"\n")
             else None)
         in
-        (sprintf "%s        case \"$3\" in" indent :: hint_branches)
+        [ sprintf
+            "%s        # If the current word is preceeded by an \"=\" sign then skip to \
+             the previous word."
+            indent
+        ; sprintf "%s        local last_arg=$3" indent
+        ; sprintf "%s        if [ \"$last_arg\" == \"=\" ]" indent
+        ; sprintf "%s        then" indent
+        ; sprintf "%s            last_arg=${COMP_WORDS[$((COMP_CWORD-2))]}" indent
+        ; sprintf "%s        fi" indent
+        ; sprintf "%s        case \"$last_arg\" in" indent
+        ]
+        @ hint_branches
         @ [ sprintf "%s        *)" indent
           ; sprintf "%s            %s" indent (complete_args ())
           ; sprintf "%s            ;;" indent

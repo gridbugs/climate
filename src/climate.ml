@@ -783,7 +783,7 @@ module Arg_parser = struct
     }
   ;;
 
-  let enum l ~eq ~default_value_name =
+  let enum ?(default_value_name = "VALUE") l ~eq =
     let all_names = List.map l ~f:fst in
     let duplicate_names =
       List.fold_left
@@ -822,6 +822,10 @@ module Arg_parser = struct
         raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
     in
     { parse; print; default_value_name; autocompletion_hint = Some (Values all_names) }
+  ;;
+
+  let string_enum ?(default_value_name = "VALUE") l =
+    enum ~default_value_name (List.map l ~f:(fun s -> s, s)) ~eq:String.equal
   ;;
 
   module Context = struct
