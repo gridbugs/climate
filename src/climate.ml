@@ -228,6 +228,7 @@ module Spec = struct
             string option (* default value to display in documentation (if any) *)
         ; required : bool (* determines if argument is shown in usage string *)
         ; desc : string option
+        ; autocompletion_hint : Autocompletion.Hint.t option
         }
 
       let has_param t =
@@ -237,7 +238,13 @@ module Spec = struct
       ;;
 
       let flag names ~desc =
-        { names; has_param = `No; default_string = None; required = false; desc }
+        { names
+        ; has_param = `No
+        ; default_string = None
+        ; required = false
+        ; desc
+        ; autocompletion_hint = None
+        }
       ;;
 
       let long_name { names; _ } =
@@ -297,10 +304,8 @@ module Spec = struct
           | `No -> false
           | `Yes_with_value_name _ -> true
         in
-        List.filter_map (Nonempty_list.to_list info.names) ~f:(fun name ->
-          if Name.is_long name
-          then Some { Autocompletion.Arg.name = Name.to_string name; has_param }
-          else None))
+        List.map (Nonempty_list.to_list info.names) ~f:(fun name ->
+          { Autocompletion.Arg.name; has_param; hint = info.autocompletion_hint }))
     ;;
   end
 
@@ -713,10 +718,15 @@ module Arg_parser = struct
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
+  type autocompletion_hint = Autocompletion.Hint.t =
+    | File
+    | Values of string list
+
   type 'a conv =
     { parse : 'a parse
     ; print : 'a print
     ; default_value_name : string
+    ; autocompletion_hint : Autocompletion.Hint.t option
     }
 
   let conv_value_to_string conv value =
@@ -727,7 +737,11 @@ module Arg_parser = struct
   let sprintf = Printf.sprintf
 
   let string =
-    { parse = Result.ok; print = Format.pp_print_string; default_value_name = "STRING" }
+    { parse = Result.ok
+    ; print = Format.pp_print_string
+    ; default_value_name = "STRING"
+    ; autocompletion_hint = None
+    }
   ;;
 
   let int =
@@ -736,7 +750,11 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an int)" s))
     in
-    { parse; print = Format.pp_print_int; default_value_name = "INT" }
+    { parse
+    ; print = Format.pp_print_int
+    ; default_value_name = "INT"
+    ; autocompletion_hint = None
+    }
   ;;
 
   let float =
@@ -745,7 +763,11 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an float)" s))
     in
-    { parse; print = Format.pp_print_float; default_value_name = "FLOAT" }
+    { parse
+    ; print = Format.pp_print_float
+    ; default_value_name = "FLOAT"
+    ; autocompletion_hint = None
+    }
   ;;
 
   let bool =
@@ -754,7 +776,11 @@ module Arg_parser = struct
       | Some i -> Ok i
       | None -> Error (`Msg (sprintf "invalid value: %S (not an bool)" s))
     in
-    { parse; print = Format.pp_print_bool; default_value_name = "BOOL" }
+    { parse
+    ; print = Format.pp_print_bool
+    ; default_value_name = "BOOL"
+    ; autocompletion_hint = Some (Values [ "true"; "false" ])
+    }
   ;;
 
   let enum l ~eq ~default_value_name =
@@ -795,7 +821,7 @@ module Arg_parser = struct
       | None ->
         raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
     in
-    { parse; print; default_value_name }
+    { parse; print; default_value_name; autocompletion_hint = Some (Values all_names) }
   ;;
 
   module Context = struct
@@ -876,6 +902,7 @@ module Arg_parser = struct
       ; default_string = None
       ; required = false
       ; desc
+      ; autocompletion_hint = conv.autocompletion_hint
       }
       conv
   ;;
@@ -888,6 +915,7 @@ module Arg_parser = struct
       ; default_string = None
       ; required = false
       ; desc
+      ; autocompletion_hint = conv.autocompletion_hint
       }
       conv
   ;;
@@ -900,6 +928,7 @@ module Arg_parser = struct
       ; default_string = Some (conv_value_to_string conv default)
       ; required = false
       ; desc
+      ; autocompletion_hint = conv.autocompletion_hint
       }
       conv
     >>| Option.value ~default
@@ -913,6 +942,7 @@ module Arg_parser = struct
       ; default_string = None
       ; required = true
       ; desc
+      ; autocompletion_hint = conv.autocompletion_hint
       }
       conv
     |> map ~f:(function

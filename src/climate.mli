@@ -10,6 +10,10 @@ module Arg_parser : sig
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
+  type autocompletion_hint =
+    | File
+    | Values of string list
+
   (** Knows how to interpret strings on the command line as a particular type
       and how to format values of said type as strings. Define a custom [_ conv]
       value to implement a parser for a custom type. *)
@@ -17,9 +21,10 @@ module Arg_parser : sig
     { parse : 'a parse
     ; print : 'a print
     ; default_value_name : string
-    (* In help messages, [default_value_name] is the placeholder for a value in
-       the documentation of an argument with a parameter and in the usage
-       message (e.g. "--foo=STRING"). *)
+        (* In help messages, [default_value_name] is the placeholder for a value in
+           the documentation of an argument with a parameter and in the usage
+           message (e.g. "--foo=STRING"). *)
+    ; autocompletion_hint : autocompletion_hint option
     }
 
   val string : string conv

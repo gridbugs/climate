@@ -1,7 +1,14 @@
+module Hint : sig
+  type t =
+    | File
+    | Values of string list
+end
+
 module Arg : sig
   type t =
-    { name : string
+    { name : Name.t
     ; has_param : bool
+    ; hint : Hint.t option
     }
 end
 

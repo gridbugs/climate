@@ -2,14 +2,22 @@ open! Import
 
 let sprintf = Printf.sprintf
 
+module Hint = struct
+  type t =
+    | File
+    | Values of string list
+end
+
 module Arg = struct
   type t =
-    { name : string
+    { name : Name.t
     ; has_param : bool
+    ; hint : Hint.t option
     }
 
-  let to_string { name; has_param } =
-    if has_param then sprintf "--%s=" name else sprintf "--%s" name
+  let to_string { name; has_param; _ } =
+    let name_string = Name.to_string_with_dashes name in
+    if Name.is_long name && has_param then sprintf "%s=" name_string else name_string
   ;;
 end
 
@@ -26,14 +34,29 @@ module Spec = struct
 
   let empty = { args = []; subcommands = [] }
 
+  let args_sorted { args; _ } =
+    let cmp (arg1 : Arg.t) (arg2 : Arg.t) =
+      String.compare (Name.to_string arg1.name) (Name.to_string arg2.name)
+    in
+    let long_args =
+      List.filter args ~f:(fun { Arg.name; _ } -> Name.is_long name) |> List.sort ~cmp
+    in
+    let short_args =
+      List.filter args ~f:(fun { Arg.name; _ } -> Name.is_short name) |> List.sort ~cmp
+    in
+    long_args @ short_args
+  ;;
+
   let generate_code ~prefix ~program_name t =
     let rec generate_code_rec t depth command_line_acc =
       let command_line = List.rev command_line_acc |> String.concat ~sep:" " in
       let complete_args () =
         if List.is_empty t.args
-        then sprintf "# command %S has no arguments with long names" command_line
+        then sprintf "# command %S has no named arguments" command_line
         else (
-          let args_string = List.map t.args ~f:Arg.to_string |> String.concat ~sep:" " in
+          let args_string =
+            List.map (args_sorted t) ~f:Arg.to_string |> String.concat ~sep:" "
+          in
           sprintf
             "%s_set_reply_no_space_if_ends_with_equals_sign $2 '%s'"
             prefix
@@ -50,28 +73,59 @@ module Spec = struct
       in
       let word_index = depth + 1 in
       let indent = String.init (4 * (1 + (2 * depth))) ~f:(Fun.const ' ') in
+      let generate_hints () =
+        let hint_branches =
+          List.filter_map (args_sorted t) ~f:(fun { Arg.name; has_param; hint } ->
+            if has_param
+            then
+              Option.map hint ~f:(fun hint ->
+                let commands =
+                  match hint with
+                  | File -> [ sprintf "%s_set_reply_files" prefix ]
+                  | Values values ->
+                    [ sprintf
+                        "COMPREPLY=($(compgen -W '%s' -- $2))"
+                        (String.concat ~sep:" " values)
+                    ]
+                in
+                (sprintf "%s        %s)" indent (Name.to_string_with_dashes name)
+                 :: List.map commands ~f:(fun command ->
+                   sprintf "%s              %s" indent command))
+                @ [ sprintf "%s              ;;" indent ]
+                |> String.concat ~sep:"\n")
+            else None)
+        in
+        (sprintf "%s        case \"$3\" in" indent :: hint_branches)
+        @ [ sprintf "%s        *)" indent
+          ; sprintf "%s            %s" indent (complete_args ())
+          ; sprintf "%s            ;;" indent
+          ; sprintf "%s    esac" indent
+          ]
+        |> String.concat ~sep:"\n"
+      in
       let generate_subcommands () =
-        if List.is_empty t.subcommands
-        then sprintf "    %s: # command %S has no subcommands" indent command_line
-        else (
-          let subcommand_branches =
-            List.map t.subcommands ~f:(fun { name; spec } ->
-              [ sprintf "%s        %s)" indent name
-              ; generate_code_rec spec (depth + 1) (name :: command_line_acc)
-              ; sprintf "%s        ;;" indent
-              ]
-              |> String.concat ~sep:"\n")
-          in
-          (sprintf "%s    case \"${COMP_WORDS[%d]}\" in" indent word_index
-           :: subcommand_branches)
-          @ [ sprintf "%s    esac" indent ]
-          |> String.concat ~sep:"\n")
+        let subcommand_branches =
+          List.map t.subcommands ~f:(fun { name; spec } ->
+            [ sprintf "%s        %s)" indent name
+            ; generate_code_rec spec (depth + 1) (name :: command_line_acc)
+            ; sprintf "%s        ;;" indent
+            ]
+            |> String.concat ~sep:"\n")
+        in
+        (sprintf "%s    case \"${COMP_WORDS[%d]}\" in" indent word_index
+         :: subcommand_branches)
+        @ [ sprintf "%s        *)" indent
+          ; generate_hints ()
+          ; sprintf "%s            ;;" indent
+          ; sprintf "%s    esac" indent
+          ]
+        |> String.concat ~sep:"\n"
       in
       [ sprintf "%s# Begin handling of command %S" indent command_line
       ; sprintf "%sif [ \"$COMP_CWORD\" == \"%d\" ]" indent word_index
       ; sprintf "%sthen" indent
       ; sprintf "%s    case $2 in" indent
-      ; sprintf "%s        --*) # Arguments of command %S:" indent command_line
+      ; sprintf "%s        -*) # Arguments of command %S:" indent command_line
       ; sprintf "%s            %s" indent (complete_args ())
       ; sprintf "%s            ;;" indent
       ; sprintf "%s        *) # Subcommands of command %S:" indent command_line

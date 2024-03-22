@@ -3,6 +3,7 @@ open Climate
 let commit =
   let open Arg_parser in
   let+ _amend = flag [ "amend"; "a" ]
+  and+ _bool = named_opt [ "bool"; "b" ] bool
   and+ _message = named_opt [ "m"; "message" ] string in
   ()
 ;;
