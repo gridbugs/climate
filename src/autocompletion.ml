@@ -2,13 +2,18 @@ open! Import
 
 let sprintf = Printf.sprintf
 
+let reentrant_autocompletion_query_name =
+  Name.of_string_exn "__reentrant-autocompletion-query"
+;;
+
 module Hint = struct
   type t =
     | File
     | Values of string list
+    | Reentrant_index of int
 end
 
-module Arg = struct
+module Named_arg = struct
   type t =
     { name : Name.t
     ; has_param : bool
@@ -21,9 +26,19 @@ module Arg = struct
   ;;
 end
 
+module Parser_spec = struct
+  type t =
+    { named_args : Named_arg.t list
+    ; positional_args_hint :
+        Hint.t option (* TODO allow different hints for different positional args *)
+    }
+
+  let empty = { named_args = []; positional_args_hint = None }
+end
+
 module Spec = struct
   type t =
-    { args : Arg.t list
+    { parser_spec : Parser_spec.t
     ; subcommands : subcommand list
     }
 
@@ -32,68 +47,113 @@ module Spec = struct
     ; spec : t
     }
 
-  let empty = { args = []; subcommands = [] }
+  let empty = { parser_spec = Parser_spec.empty; subcommands = [] }
 
-  let args_sorted { args; _ } =
-    let cmp (arg1 : Arg.t) (arg2 : Arg.t) =
+  let named_args_sorted { parser_spec = { named_args; _ }; _ } =
+    let cmp (arg1 : Named_arg.t) (arg2 : Named_arg.t) =
       String.compare (Name.to_string arg1.name) (Name.to_string arg2.name)
     in
     let long_args =
-      List.filter args ~f:(fun { Arg.name; _ } -> Name.is_long name) |> List.sort ~cmp
+      List.filter named_args ~f:(fun { Named_arg.name; _ } -> Name.is_long name)
+      |> List.sort ~cmp
     in
     let short_args =
-      List.filter args ~f:(fun { Arg.name; _ } -> Name.is_short name) |> List.sort ~cmp
+      List.filter named_args ~f:(fun { Named_arg.name; _ } -> Name.is_short name)
+      |> List.sort ~cmp
     in
     long_args @ short_args
   ;;
 
-  let generate_code ~prefix ~program_name t =
+  let generate_code ~prefix ~program_name ~program_exe t =
     let rec generate_code_rec t depth command_line_acc =
-      let command_line = List.rev command_line_acc |> String.concat ~sep:" " in
+      let command_line =
+        program_name :: List.rev command_line_acc |> String.concat ~sep:" "
+      in
+      let word_index = depth + 1 in
+      let indent = String.init (4 * (1 + (2 * depth))) ~f:(Fun.const ' ') in
       let complete_args () =
-        if List.is_empty t.args
+        if List.is_empty t.parser_spec.named_args
         then sprintf "# command %S has no named arguments" command_line
         else (
           let args_string =
-            List.map (args_sorted t) ~f:Arg.to_string |> String.concat ~sep:" "
+            List.map (named_args_sorted t) ~f:Named_arg.to_string
+            |> String.concat ~sep:" "
           in
           sprintf
             "%s_set_reply_no_space_if_ends_with_equals_sign $2 '%s'"
             prefix
             args_string)
       in
+      let generate_hints_positional () =
+        let commands =
+          match t.parser_spec.positional_args_hint with
+          | None -> [ ": # no hint " ]
+          | Some hint ->
+            (match hint with
+             | File -> [ sprintf "%s_set_reply_files" prefix ]
+             | Values values ->
+               [ sprintf
+                   "COMPREPLY=($(compgen -W '%s' -- $2))"
+                   (String.concat ~sep:" " values)
+               ]
+             | Reentrant_index i ->
+               let this_subcommand = String.concat ~sep:" " (List.rev command_line_acc) in
+               [ sprintf
+                   "local suggestions=$(%s %s %s=%d)"
+                   program_exe
+                   this_subcommand
+                   (Name.to_string_with_dashes reentrant_autocompletion_query_name)
+                   i
+               ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
+               ])
+        in
+        List.map commands ~f:(fun command -> sprintf "%s            %s" indent command)
+        |> String.concat ~sep:"\n"
+      in
       let complete_subcommands () =
         if List.is_empty t.subcommands
-        then sprintf "# command %S has no subcommands" command_line
+        then generate_hints_positional ()
         else (
           let subcommands_string =
             List.map t.subcommands ~f:(fun { name; _ } -> name) |> String.concat ~sep:" "
           in
           sprintf "COMPREPLY=($(compgen -W '%s' -- $2))" subcommands_string)
       in
-      let word_index = depth + 1 in
-      let indent = String.init (4 * (1 + (2 * depth))) ~f:(Fun.const ' ') in
       let generate_hints () =
         let hint_branches =
-          List.filter_map (args_sorted t) ~f:(fun { Arg.name; has_param; hint } ->
-            if has_param
-            then
-              Option.map hint ~f:(fun hint ->
-                let commands =
-                  match hint with
-                  | File -> [ sprintf "%s_set_reply_files" prefix ]
-                  | Values values ->
-                    [ sprintf
-                        "COMPREPLY=($(compgen -W '%s' -- $2))"
-                        (String.concat ~sep:" " values)
-                    ]
-                in
-                (sprintf "%s        %s)" indent (Name.to_string_with_dashes name)
-                 :: List.map commands ~f:(fun command ->
-                   sprintf "%s              %s" indent command))
-                @ [ sprintf "%s              ;;" indent ]
-                |> String.concat ~sep:"\n")
-            else None)
+          List.filter_map
+            (named_args_sorted t)
+            ~f:(fun { Named_arg.name; has_param; hint } ->
+              if has_param
+              then
+                Option.map hint ~f:(fun hint ->
+                  let commands =
+                    match hint with
+                    | File -> [ sprintf "%s_set_reply_files" prefix ]
+                    | Values values ->
+                      [ sprintf
+                          "COMPREPLY=($(compgen -W '%s' -- $2))"
+                          (String.concat ~sep:" " values)
+                      ]
+                    | Reentrant_index i ->
+                      let this_subcommand =
+                        String.concat ~sep:" " (List.rev command_line_acc)
+                      in
+                      [ sprintf
+                          "local suggestions=$(%s %s %s=%d)"
+                          program_exe
+                          this_subcommand
+                          (Name.to_string_with_dashes reentrant_autocompletion_query_name)
+                          i
+                      ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
+                      ]
+                  in
+                  (sprintf "%s        %s)" indent (Name.to_string_with_dashes name)
+                   :: List.map commands ~f:(fun command ->
+                     sprintf "%s              %s" indent command))
+                  @ [ sprintf "%s              ;;" indent ]
+                  |> String.concat ~sep:"\n")
+              else None)
         in
         [ sprintf
             "%s        # If the current word is preceeded by an \"=\" sign then skip to \
@@ -136,7 +196,7 @@ module Spec = struct
       ; sprintf "%sif [ \"$COMP_CWORD\" == \"%d\" ]" indent word_index
       ; sprintf "%sthen" indent
       ; sprintf "%s    case $2 in" indent
-      ; sprintf "%s        -*) # Arguments of command %S:" indent command_line
+      ; sprintf "%s        -*) # Named_arguments of command %S:" indent command_line
       ; sprintf "%s            %s" indent (complete_args ())
       ; sprintf "%s            ;;" indent
       ; sprintf "%s        *) # Subcommands of command %S:" indent command_line
@@ -150,7 +210,7 @@ module Spec = struct
       ]
       |> String.concat ~sep:"\n"
     in
-    generate_code_rec t 0 [ program_name ]
+    generate_code_rec t 0 []
   ;;
 end
 
@@ -191,7 +251,7 @@ let preamble ~program_name ~prefix =
     prefix
 ;;
 
-let completion_function ~prefix ~program_name spec =
+let completion_function ~prefix ~program_name ~program_exe spec =
   sprintf
     {|%s_complete() {
     if [ "$COMP_CWORD" == "0" ]; then
@@ -208,7 +268,7 @@ let completion_function ~prefix ~program_name spec =
 }
 |}
     prefix
-    (Spec.generate_code ~prefix ~program_name spec)
+    (Spec.generate_code ~prefix ~program_name ~program_exe spec)
     prefix
 ;;
 
@@ -216,14 +276,16 @@ let register ~program_name ~prefix =
   sprintf "complete -F %s_complete %s" prefix program_name
 ;;
 
-let generate_bash spec ~program_name =
+let generate_bash spec ~program_name ~program_exe =
   (* Add a random prefix to all global names so we don't collide with other global shell functions. *)
   Random.self_init ();
-  let prefix = sprintf "_%d" (Random.int32 Int32.max_int |> Int32.to_int) in
+  let prefix =
+    sprintf "_climate_autocompletion_%d" (Random.int32 Int32.max_int |> Int32.to_int)
+  in
   String.concat
     ~sep:"\n"
     [ preamble ~program_name ~prefix
-    ; completion_function ~prefix ~program_name spec
+    ; completion_function ~prefix ~program_name ~program_exe spec
     ; register ~prefix ~program_name
     ]
 ;;

@@ -1,5 +1,19 @@
 open Climate
 
+let branch_conv =
+  let open Arg_parser in
+  { string with
+    default_value_name = "BRANCH"
+  ; autocompletion_hint = Some (Reentrant (fun () -> [ "main"; "devel" ]))
+  }
+;;
+
+let checkout =
+  let open Arg_parser in
+  let+ _branch = pos_req 0 branch_conv in
+  ()
+;;
+
 let commit =
   let open Arg_parser in
   let+ _amend = flag [ "amend"; "a" ]
@@ -26,6 +40,7 @@ let () =
   let open Command in
   group
     [ subcommand "config" (singleton Arg_parser.unit)
+    ; subcommand "checkout" (singleton checkout)
     ; subcommand "commit" (singleton commit)
     ; subcommand "log" (singleton log)
     ; subcommand

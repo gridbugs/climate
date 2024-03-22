@@ -10,9 +10,12 @@ module Arg_parser : sig
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
-  type autocompletion_hint =
-    | File
-    | Values of string list
+  module Autocompletion_hint : sig
+    type t =
+      | File
+      | Values of string list
+      | Reentrant of (unit -> string list)
+  end
 
   (** Knows how to interpret strings on the command line as a particular type
       and how to format values of said type as strings. Define a custom [_ conv]
@@ -24,13 +27,17 @@ module Arg_parser : sig
         (* In help messages, [default_value_name] is the placeholder for a value in
            the documentation of an argument with a parameter and in the usage
            message (e.g. "--foo=STRING"). *)
-    ; autocompletion_hint : autocompletion_hint option
+    ; autocompletion_hint : Autocompletion_hint.t option
     }
 
   val string : string conv
   val int : int conv
   val float : float conv
   val bool : bool conv
+
+  (** Similar to [string] except it's default value name and autocompletion
+      hint is specialized for files. *)
+  val file : string conv
 
   (** [enum values ~eq] returns a conv for a concrete set of possible values of
       type ['a]. The values and their names are given by the [values] argument and
@@ -135,6 +142,12 @@ module Command : sig
   val group : ?default_arg_parser:'a Arg_parser.t -> 'a subcommand list -> 'a t
 
   val print_autocompletion_script_bash : _ t
+
+  val autocompletion_script_bash
+    :  _ t
+    -> program_name:string
+    -> program_exe:string
+    -> string
 
   (** Run the command line parser on a given list of terms. Raises a
       [Parse_error.E] if the command line is invalid. *)

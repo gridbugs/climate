@@ -219,6 +219,13 @@ let help_names : Name.t Nonempty_list.t =
 ;;
 
 module Spec = struct
+  module Autocompletion_hint = struct
+    type t =
+      | File
+      | Values of string list
+      | Reentrant of (unit -> string list)
+  end
+
   module Named = struct
     module Info = struct
       type t =
@@ -228,7 +235,7 @@ module Spec = struct
             string option (* default value to display in documentation (if any) *)
         ; required : bool (* determines if argument is shown in usage string *)
         ; desc : string option
-        ; autocompletion_hint : Autocompletion.Hint.t option
+        ; autocompletion_hint : Autocompletion_hint.t option
         }
 
       let has_param t =
@@ -296,28 +303,19 @@ module Spec = struct
     let all_optional { infos } =
       List.filter infos ~f:(fun { Info.required; _ } -> not required)
     ;;
-
-    let to_autocompletion_arg { infos } =
-      List.concat_map infos ~f:(fun (info : Info.t) ->
-        let has_param =
-          match info.has_param with
-          | `No -> false
-          | `Yes_with_value_name _ -> true
-        in
-        List.map (Nonempty_list.to_list info.names) ~f:(fun name ->
-          { Autocompletion.Arg.name; has_param; hint = info.autocompletion_hint }))
-    ;;
   end
 
   module Positional = struct
     type all_above_inclusive =
       { index : int
       ; value_name : string
+      ; autocompletion_hint : Autocompletion_hint.t option
       }
 
     type single_arg =
       { required : bool
       ; value_name : string
+      ; autocompletion_hint : Autocompletion_hint.t option
       }
 
     (* Keeps track of which indices of positional argument have parsers registered *)
@@ -327,6 +325,12 @@ module Spec = struct
       }
 
     let empty = { all_above_inclusive = None; other_value_names_by_index = Int.Map.empty }
+
+    let first_autocompletion_hint { all_above_inclusive; other_value_names_by_index } =
+      match Int.Map.find other_value_names_by_index 0 with
+      | Some x -> x.autocompletion_hint
+      | None -> Option.bind all_above_inclusive (fun x -> x.autocompletion_hint)
+    ;;
 
     let check_value_names index value_name1 value_name2 =
       if not (String.equal value_name1 value_name2)
@@ -345,7 +349,7 @@ module Spec = struct
         let other_value_names_by_index =
           Int.Map.filter
             t.other_value_names_by_index
-            ~f:(fun index { value_name; required } ->
+            ~f:(fun index { value_name; required; _ } ->
               if index >= all_above_inclusive.index
               then (
                 check_value_names index value_name all_above_inclusive.value_name;
@@ -360,10 +364,10 @@ module Spec = struct
         { t with other_value_names_by_index }
     ;;
 
-    let add_index t index ~value_name ~required =
+    let add_index t index ~value_name ~required ~autocompletion_hint =
       let other_value_names_by_index =
         Int.Map.update t.other_value_names_by_index ~key:index ~f:(function
-          | None -> Some { value_name; required }
+          | None -> Some { value_name; required; autocompletion_hint }
           | Some x ->
             check_value_names index x.value_name value_name;
             if x.required <> required
@@ -375,17 +379,19 @@ module Spec = struct
       trim_map { t with other_value_names_by_index }
     ;;
 
-    let add_all_above_inclusive t index ~value_name =
+    let add_all_above_inclusive t index ~value_name ~autocompletion_hint =
       match t.all_above_inclusive with
       | Some x when x.index < index ->
         check_value_names index x.value_name value_name;
         t
-      | _ -> trim_map { t with all_above_inclusive = Some { index; value_name } }
+      | _ ->
+        trim_map
+          { t with all_above_inclusive = Some { index; value_name; autocompletion_hint } }
     ;;
 
-    let add_all_below_exclusive t index ~value_name ~required =
+    let add_all_below_exclusive t index ~value_name ~required ~autocompletion_hint =
       Seq.init index Fun.id
-      |> Seq.fold_left (add_index ~value_name ~required) t
+      |> Seq.fold_left (add_index ~value_name ~required ~autocompletion_hint) t
       |> trim_map
     ;;
 
@@ -397,7 +403,11 @@ module Spec = struct
         | Some x, Some y ->
           check_value_names (Int.max x.index y.index) x.value_name y.value_name;
           let index = Int.min x.index y.index in
-          Some { index; value_name = x.value_name }
+          Some
+            { index
+            ; value_name = x.value_name
+            ; autocompletion_hint = x.autocompletion_hint
+            }
       in
       let other_value_names_by_index =
         Int.Map.merge
@@ -453,7 +463,7 @@ module Spec = struct
 
     let all_required_value_names { other_value_names_by_index; _ } =
       Int.Map.to_seq other_value_names_by_index
-      |> Seq.filter_map (fun (_, { required; value_name }) ->
+      |> Seq.filter_map (fun (_, { required; value_name; _ }) ->
         if required then Some value_name else None)
       |> List.of_seq
     ;;
@@ -718,15 +728,13 @@ module Arg_parser = struct
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
-  type autocompletion_hint = Autocompletion.Hint.t =
-    | File
-    | Values of string list
+  module Autocompletion_hint = Spec.Autocompletion_hint
 
   type 'a conv =
     { parse : 'a parse
     ; print : 'a print
     ; default_value_name : string
-    ; autocompletion_hint : Autocompletion.Hint.t option
+    ; autocompletion_hint : Autocompletion_hint.t option
     }
 
   let conv_value_to_string conv value =
@@ -783,6 +791,13 @@ module Arg_parser = struct
     }
   ;;
 
+  let file =
+    { string with
+      default_value_name = "FILE"
+    ; autocompletion_hint = Some Autocompletion_hint.File
+    }
+  ;;
+
   let enum ?(default_value_name = "VALUE") l ~eq =
     let all_names = List.map l ~f:fst in
     let duplicate_names =
@@ -821,7 +836,11 @@ module Arg_parser = struct
       | None ->
         raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
     in
-    { parse; print; default_value_name; autocompletion_hint = Some (Values all_names) }
+    { parse
+    ; print
+    ; default_value_name
+    ; autocompletion_hint = Some (Autocompletion_hint.Values all_names)
+    }
   ;;
 
   let string_enum ?(default_value_name = "VALUE") l =
@@ -987,7 +1006,8 @@ module Arg_parser = struct
           (Spec.Positional.index
              i
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
-             ~required)
+             ~required
+             ~autocompletion_hint:conv.autocompletion_hint)
     ; arg_compute =
         (fun context ->
           Raw_arg_table.get_pos context.raw_arg_table i
@@ -1014,7 +1034,8 @@ module Arg_parser = struct
           (Spec.Positional.all_below_exclusive
              i
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
-             ~required)
+             ~required
+             ~autocompletion_hint:conv.autocompletion_hint)
     ; arg_compute =
         (fun context ->
           let left, _ =
@@ -1035,7 +1056,8 @@ module Arg_parser = struct
         Spec.positional
           (Spec.Positional.all_above_inclusive
              i
-             ~value_name:(Option.value value_name ~default:conv.default_value_name))
+             ~value_name:(Option.value value_name ~default:conv.default_value_name)
+             ~autocompletion_hint:conv.autocompletion_hint)
     ; arg_compute =
         (fun context ->
           let _, right =
@@ -1097,14 +1119,13 @@ module Arg_parser = struct
     validate t;
     add_help t
   ;;
-
-  let to_autocompletion_arg { arg_spec; _ } =
-    Spec.Named.to_autocompletion_arg arg_spec.named
-  ;;
 end
 
 module Autocompletion_args = struct
-  type t = { program_name : string }
+  type t =
+    { program_name : string
+    ; program_exe : string
+    }
 
   let arg_parser =
     let open Arg_parser in
@@ -1116,13 +1137,26 @@ module Autocompletion_args = struct
         ~value_name:"PROGRAM"
         [ "program-name" ]
         string
+    and+ program_exe =
+      named_opt
+        ~desc:
+          "Program to run when executing reentrant queries. This should usually be the \
+           same as program-name. Will default to argv[0]."
+        ~value_name:"PROGRAM"
+        [ "program-exe" ]
+        string
     in
     let program_name =
       match program_name with
       | Some program_name -> program_name
       | None -> Sys.argv.(0)
     in
-    { program_name }
+    let program_exe =
+      match program_exe with
+      | Some program_exe -> program_exe
+      | None -> Sys.argv.(0)
+    in
+    { program_name; program_exe }
   ;;
 end
 
@@ -1148,35 +1182,6 @@ module Command = struct
     { info : Info.t
     ; command : 'a t
     }
-
-  let rec to_autocompletion_spec = function
-    | Singleton arg_parser ->
-      { Autocompletion.Spec.args = Arg_parser.to_autocompletion_arg arg_parser
-      ; subcommands = []
-      }
-    | Group { children; default_arg_parser } ->
-      let args =
-        match default_arg_parser with
-        | None -> []
-        | Some default_arg_parser -> Arg_parser.to_autocompletion_arg default_arg_parser
-      in
-      { Autocompletion.Spec.args
-      ; subcommands =
-          List.filter_map children ~f:(fun { info; command } ->
-            if info.hidden
-            then None
-            else
-              Some
-                { Autocompletion.Spec.name = Name.to_string info.name
-                ; spec = to_autocompletion_spec command
-                })
-      }
-    | Internal _ -> Autocompletion.Spec.empty
-  ;;
-
-  let autocompletion_script_bash t ~program_name =
-    to_autocompletion_spec t |> Autocompletion.generate_bash ~program_name
-  ;;
 
   let singleton term = Singleton (Arg_parser.finalize term)
 
@@ -1231,7 +1236,120 @@ module Command = struct
       Ok { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
   ;;
 
+  let add_reentrant_autocompletion_query_to_parser { Arg_parser.arg_spec; arg_compute } =
+    let reentrant_autocompletion_query_name =
+      Autocompletion.reentrant_autocompletion_query_name
+    in
+    let reentrant_fns, named_args =
+      List.fold_left
+        arg_spec.named.infos
+        ~init:([], [])
+        ~f:(fun (reentrant_fns, autocompletion_args) info ->
+          let has_param = Spec.Named.Info.has_param info in
+          let hint, reentrant_fns =
+            match info.autocompletion_hint with
+            | None -> None, reentrant_fns
+            | Some File -> Some Autocompletion.Hint.File, reentrant_fns
+            | Some (Values values) -> Some (Values values), reentrant_fns
+            | Some (Reentrant f) ->
+              let index = List.length reentrant_fns in
+              Some (Reentrant_index index), f :: reentrant_fns
+          in
+          let args =
+            List.map (Nonempty_list.to_list info.names) ~f:(fun name ->
+              { Autocompletion.Named_arg.name; has_param; hint })
+          in
+          reentrant_fns, args @ autocompletion_args)
+    in
+    let positional_args_hint, reentrant_fns =
+      match Spec.Positional.first_autocompletion_hint arg_spec.positional with
+      | None -> None, reentrant_fns
+      | Some File -> Some Autocompletion.Hint.File, reentrant_fns
+      | Some (Values values) -> Some (Values values), reentrant_fns
+      | Some (Reentrant f) ->
+        let index = List.length reentrant_fns in
+        Some (Reentrant_index index), f :: reentrant_fns
+    in
+    let reentrant_fns = List.rev reentrant_fns in
+    let parser_spec = { Autocompletion.Parser_spec.named_args; positional_args_hint } in
+    let arg_compute (context : Arg_parser.Context.t) =
+      match
+        Raw_arg_table.get_opts context.raw_arg_table reentrant_autocompletion_query_name
+      with
+      | [] -> arg_compute context
+      | [ query ] ->
+        (match int_of_string_opt query with
+         | Some query ->
+           (match List.nth_opt reentrant_fns query with
+            | Some f ->
+              f () |> List.iter ~f:print_endline;
+              exit 0
+            | None -> failwith (sprintf "reentrant query index %d is out of bounds" query))
+         | None ->
+           failwith
+             (sprintf
+                "%s received a non-int argument (%s)"
+                (Name.to_string_with_dashes reentrant_autocompletion_query_name)
+                query))
+      | _many ->
+        failwith
+          (sprintf
+             "%s may not be passed multiple times"
+             (Name.to_string_with_dashes reentrant_autocompletion_query_name))
+    in
+    let info =
+      { Spec.Named.Info.names = [ reentrant_autocompletion_query_name ]
+      ; has_param = `Yes_with_value_name "INT"
+      ; default_string = None
+      ; required = false
+      ; desc = None
+      ; autocompletion_hint = None
+      }
+    in
+    let arg_spec = Spec.merge arg_spec (Spec.named info) in
+    { Arg_parser.arg_spec; arg_compute }, parser_spec
+  ;;
+
+  let rec with_autocompletion_spec = function
+    | Singleton arg_parser ->
+      let arg_parser, parser_spec =
+        add_reentrant_autocompletion_query_to_parser arg_parser
+      in
+      let spec = { Autocompletion.Spec.parser_spec; subcommands = [] } in
+      Singleton arg_parser, spec
+    | Group { children; default_arg_parser } ->
+      let default_arg_parser, parser_spec =
+        match default_arg_parser with
+        | None -> None, Autocompletion.Parser_spec.empty
+        | Some arg_parser ->
+          let arg_parser, parser_spec =
+            add_reentrant_autocompletion_query_to_parser arg_parser
+          in
+          Some arg_parser, parser_spec
+      in
+      let children, subcommand_opts =
+        List.map children ~f:(fun { info; command } ->
+          if info.hidden
+          then { info; command }, None
+          else (
+            let command, spec = with_autocompletion_spec command in
+            ( { info; command }
+            , Some { Autocompletion.Spec.name = Name.to_string info.name; spec } )))
+        |> List.split
+      in
+      let spec =
+        { Autocompletion.Spec.parser_spec; subcommands = List.filter_opt subcommand_opts }
+      in
+      Group { children; default_arg_parser }, spec
+    | Internal i -> Internal i, Autocompletion.Spec.empty
+  ;;
+
+  let autocompletion_script_bash t ~program_name =
+    with_autocompletion_spec t |> snd |> Autocompletion.generate_bash ~program_name
+  ;;
+
   let eval t (command_line : Command_line.t) =
+    let t, autocompletion_spec = with_autocompletion_spec t in
     let { operation; args; subcommand } =
       match traverse t command_line.args [ command_line.program ] with
       | Ok x -> x
@@ -1241,10 +1359,11 @@ module Command = struct
     | `Arg_parser arg_parser -> Arg_parser.eval arg_parser ~args ~subcommand
     | `Internal Print_autocompletion_script_bash ->
       let arg_parser = Arg_parser.add_help Autocompletion_args.arg_parser in
-      let { Autocompletion_args.program_name } =
+      let { Autocompletion_args.program_name; program_exe } =
         Arg_parser.eval arg_parser ~args ~subcommand
       in
-      print_endline (autocompletion_script_bash t ~program_name);
+      print_endline
+        (Autocompletion.generate_bash autocompletion_spec ~program_name ~program_exe);
       exit 0
   ;;
 
