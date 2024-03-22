@@ -4,7 +4,7 @@ let branch_conv =
   let open Arg_parser in
   { string with
     default_value_name = "BRANCH"
-  ; autocompletion_hint = Some (Reentrant (fun () -> [ "main"; "devel" ]))
+  ; autocompletion_hint = Some (Reentrant (fun _command_line -> [ "main"; "devel" ]))
   }
 ;;
 

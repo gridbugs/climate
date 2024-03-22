@@ -1,4 +1,5 @@
 val reentrant_autocompletion_query_name : Name.t
+val reentrant_autocompletion_command_line_name : Name.t
 
 module Hint : sig
   type t =

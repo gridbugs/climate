@@ -14,7 +14,7 @@ module Arg_parser : sig
     type t =
       | File
       | Values of string list
-      | Reentrant of (unit -> string list)
+      | Reentrant of (Command_line.t -> string list)
   end
 
   (** Knows how to interpret strings on the command line as a particular type

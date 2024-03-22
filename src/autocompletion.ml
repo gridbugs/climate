@@ -6,6 +6,10 @@ let reentrant_autocompletion_query_name =
   Name.of_string_exn "__reentrant-autocompletion-query"
 ;;
 
+let reentrant_autocompletion_command_line_name =
+  Name.of_string_exn "__reentrant-autocompletion-command-line"
+;;
+
 module Hint = struct
   type t =
     | File
@@ -99,11 +103,12 @@ module Spec = struct
              | Reentrant_index i ->
                let this_subcommand = String.concat ~sep:" " (List.rev command_line_acc) in
                [ sprintf
-                   "local suggestions=$(%s %s %s=%d)"
+                   "local suggestions=$(%s %s %s=%d %s=\"$COMP_LINE\")"
                    program_exe
                    this_subcommand
                    (Name.to_string_with_dashes reentrant_autocompletion_query_name)
                    i
+                   (Name.to_string_with_dashes reentrant_autocompletion_command_line_name)
                ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
                ])
         in
@@ -140,11 +145,13 @@ module Spec = struct
                         String.concat ~sep:" " (List.rev command_line_acc)
                       in
                       [ sprintf
-                          "local suggestions=$(%s %s %s=%d)"
+                          "local suggestions=$(%s %s %s=%d %s=\"$COMP_LINE\")"
                           program_exe
                           this_subcommand
                           (Name.to_string_with_dashes reentrant_autocompletion_query_name)
                           i
+                          (Name.to_string_with_dashes
+                             reentrant_autocompletion_command_line_name)
                       ; "COMPREPLY=($(compgen -W \"$suggestions\" -- $2))"
                       ]
                   in

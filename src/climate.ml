@@ -19,6 +19,11 @@ module Command_line = struct
     ; args : string list
     }
 
+  let of_list = function
+    | program :: args -> { program; args }
+    | [] -> failwith "unexpected empty list"
+  ;;
+
   let from_env () =
     match Sys.argv |> Array.to_list with
     | program :: args -> { program; args }
@@ -223,7 +228,7 @@ module Spec = struct
     type t =
       | File
       | Values of string list
-      | Reentrant of (unit -> string list)
+      | Reentrant of (Command_line.t -> string list)
   end
 
   module Named = struct
@@ -1240,6 +1245,9 @@ module Command = struct
     let reentrant_autocompletion_query_name =
       Autocompletion.reentrant_autocompletion_query_name
     in
+    let reentrant_autocompletion_command_line_name =
+      Autocompletion.reentrant_autocompletion_command_line_name
+    in
     let reentrant_fns, named_args =
       List.fold_left
         arg_spec.named.infos
@@ -1282,7 +1290,15 @@ module Command = struct
          | Some query ->
            (match List.nth_opt reentrant_fns query with
             | Some f ->
-              f () |> List.iter ~f:print_endline;
+              let command_line =
+                Raw_arg_table.get_opts
+                  context.raw_arg_table
+                  reentrant_autocompletion_command_line_name
+                |> List.hd
+                |> String.split_on_char ~sep:' '
+                |> Command_line.of_list
+              in
+              f command_line |> List.iter ~f:print_endline;
               exit 0
             | None -> failwith (sprintf "reentrant query index %d is out of bounds" query))
          | None ->
@@ -1297,7 +1313,7 @@ module Command = struct
              "%s may not be passed multiple times"
              (Name.to_string_with_dashes reentrant_autocompletion_query_name))
     in
-    let info =
+    let query_info =
       { Spec.Named.Info.names = [ reentrant_autocompletion_query_name ]
       ; has_param = `Yes_with_value_name "INT"
       ; default_string = None
@@ -1306,7 +1322,19 @@ module Command = struct
       ; autocompletion_hint = None
       }
     in
-    let arg_spec = Spec.merge arg_spec (Spec.named info) in
+    let command_line_info =
+      { Spec.Named.Info.names = [ reentrant_autocompletion_command_line_name ]
+      ; has_param = `Yes_with_value_name "INT"
+      ; default_string = None
+      ; required = false
+      ; desc = None
+      ; autocompletion_hint = None
+      }
+    in
+    let arg_spec =
+      Spec.merge arg_spec (Spec.named query_info)
+      |> Spec.merge (Spec.named command_line_info)
+    in
     { Arg_parser.arg_spec; arg_compute }, parser_spec
   ;;
 
