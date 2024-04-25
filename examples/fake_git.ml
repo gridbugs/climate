@@ -1,22 +1,34 @@
+(* Git-like program to exercise completion *)
 open Climate
 
 let branch_conv =
   let open Arg_parser in
   { string with
     default_value_name = "BRANCH"
-  ; autocompletion_hint = Some (Reentrant (fun _command_line -> [ "main"; "devel" ]))
+  ; completion =
+      Some
+        (Completion.reentrant
+           ((* This is supposed to simulate passing an alternative
+               root directory to git, and having it be respected when
+               invoking git while generating completion suggestions. *)
+            let+ _root = named_opt [ "root" ] file in
+            [ "main"; "devel" ]))
   }
 ;;
 
 let checkout =
   let open Arg_parser in
-  let+ _branch = pos_req 0 branch_conv in
+  (* Multiple different completions for positional arguments *)
+  let+ _branch = pos_req 0 (string_enum [ "foo"; "bar" ])
+  and+ _ = pos_req 1 file
+  and+ _ = pos_right 2 branch_conv in
   ()
 ;;
 
 let commit =
   let open Arg_parser in
   let+ _amend = flag [ "amend"; "a" ]
+  and+ _branch = named_opt [ "b"; "branch" ] branch_conv
   and+ _message = named_opt [ "m"; "message" ] string in
   ()
 ;;
@@ -31,8 +43,10 @@ let log =
 
 let bisect_common =
   let open Arg_parser in
-  let+ _foo = flag [ "foo" ]
-  and+ _bar = flag [ "bar" ] in
+  (* Mixing subcommands and positional arguments *)
+  let+ _foo = named_opt [ "foo" ] int
+  and+ _bar = flag [ "bar" ]
+  and+ _baz = pos_opt 0 (string_enum [ "x"; "y"; "z" ]) in
   ()
 ;;
 
@@ -46,11 +60,11 @@ let () =
     ; subcommand
         "bisect"
         (group
-           ~default_arg_parser:Arg_parser.unit
+           ~default_arg_parser:bisect_common
            [ subcommand "start" (singleton bisect_common)
            ; subcommand "replay" (singleton bisect_common)
            ])
-    ; subcommand ~hidden:true "__internal" print_autocompletion_script_bash
+    ; subcommand ~hidden:true "__internal" print_completion_script_bash
     ]
   |> run
 ;;

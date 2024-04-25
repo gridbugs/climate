@@ -27,3 +27,8 @@
  (names fake_git)
  (libraries climate)
  (modules fake_git))
+
+(executables
+ (names fib)
+ (libraries climate)
+ (modules fib))
