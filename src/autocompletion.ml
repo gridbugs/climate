@@ -1,11 +1,24 @@
+(*
+   - multiple different completions for positional args
+   - complete positional args after named args
+   - different completions based on hint (including reentrant query)
+*)
+
 open! Import
 
 let sprintf = Printf.sprintf
 
+(* This named argument takes an integer index of a reentrant
+   query. This will be the parameter of the [Hint.Reentrant_index]
+   constructor. *)
 let reentrant_autocompletion_query_name =
   Name.of_string_exn "__reentrant-autocompletion-query"
 ;;
 
+(* This named argument is passed multiple times - once for each word
+   making up the current command. The words are passed to the reentrant
+   query so that it can tailor its suggestions to the current state of
+   the command line. *)
 let reentrant_autocompletion_command_line_name =
   Name.of_string_exn "__reentrant-autocompletion-command-line"
 ;;
