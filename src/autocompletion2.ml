@@ -6,36 +6,35 @@ type global_name = unique_prefix:string -> string
 
 let name_with_prefix ~unique_prefix name = String.cat unique_prefix name
 
-type global_named_value =
-  | Global_variable of
-      { name : global_name
-      ; initial_value : string
-      }
-  | Function of
-      { name : global_name
-      ; body : stmt list
-      }
+type global_value =
+  | Global_variable of { initial_value : string }
+  | Function of { body : stmt list }
+
+and global_named_value =
+  { name : global_name
+  ; value : global_value
+  }
 
 and function_call =
   { function_ : global_named_value
   ; args : value list
   }
 
-and string_with_global_named_value =
+and string_with_global_name =
   { string_of_name : string -> string
-  ; global_named_value : global_named_value
+  ; global_name : global_name
   }
 
 and value =
   | Literal of string
-  | Literal_with_global_named_value of string_with_global_named_value
+  | Literal_with_global_name of string_with_global_name
   | Global of global_named_value
 
 and cond =
   | True
   | Call of function_call
   | Test_raw_cond of string
-  | Test_raw_cond_of_string_with_global_named_value of string_with_global_named_value
+  | Test_raw_cond_of_string_with_global_name of string_with_global_name
 
 and block = stmt list
 
@@ -63,7 +62,7 @@ and for_ =
 
 and stmt =
   | Raw of string
-  | Raw_with_global_named_value of string_with_global_named_value
+  | Raw_with_global_name of string_with_global_name
   | Cond of cond
   | If of if_
   | Case of
@@ -74,33 +73,27 @@ and stmt =
   | For of for_
   | Return of value
   | Comment of string
+  | Noop
 
 module Global_named_value = struct
-  let global_name = function
-    | Global_variable { name; _ } | Function { name; _ } -> name
-  ;;
+  let global_name_with_prefix ~unique_prefix t = t.name ~unique_prefix
 
-  let global_name_with_prefix ~unique_prefix t = (global_name t) ~unique_prefix
-
-  let string_with_global_named_value_to_string
-    ~unique_prefix
-    { string_of_name; global_named_value }
-    =
-    string_of_name (global_name_with_prefix ~unique_prefix global_named_value)
+  let string_with_global_name_to_string ~unique_prefix { string_of_name; global_name } =
+    string_of_name (global_name ~unique_prefix)
   ;;
 
   let global_variable name initial_value =
-    Global_variable { name = name_with_prefix name; initial_value }
+    { name = name_with_prefix name; value = Global_variable { initial_value } }
   ;;
 
-  let function_ name body = Function { name = name_with_prefix name; body }
+  let function_ name body = { name = name_with_prefix name; value = Function { body } }
 end
 
 module Value = struct
   let literal s = Literal s
 
-  let literal_with_global_named_value ~f global_named_value =
-    Literal_with_global_named_value { string_of_name = f; global_named_value }
+  let literal_with_global_name ~f global_name =
+    Literal_with_global_name { string_of_name = f; global_name }
   ;;
 
   let global global_named_value = Global global_named_value
@@ -111,23 +104,22 @@ module Cond = struct
   let call function_ args = Call { function_; args }
   let test_raw s = Test_raw_cond s
 
-  let test_raw_of_string_with_global_named_value ~f global_named_value =
-    Test_raw_cond_of_string_with_global_named_value
-      { string_of_name = f; global_named_value }
+  let test_raw_of_string_with_global_name ~f global_name =
+    Test_raw_cond_of_string_with_global_name { string_of_name = f; global_name }
   ;;
 end
 
 module Stmt = struct
   let raw s = Raw s
 
-  let raw_with_global_named_value ~f global_named_value =
-    Raw_with_global_named_value { string_of_name = f; global_named_value }
+  let raw_with_global_name ~f global_name =
+    Raw_with_global_name { string_of_name = f; global_name }
   ;;
 
   let call function_ args = Cond (Cond.call function_ args)
 
-  let test_raw_cond_of_string_with_global_named_value ~f global_named_value =
-    Cond (Cond.test_raw_of_string_with_global_named_value ~f global_named_value)
+  let test_raw_cond_of_string_with_global_name ~f global_named_value =
+    Cond (Cond.test_raw_of_string_with_global_name ~f global_named_value)
   ;;
 
   let if_ ?elifs ?else_ cond body =
@@ -149,6 +141,7 @@ module Stmt = struct
   let for_ var seq for_body = For { var; seq; for_body }
   let return s = Return s
   let comment s = Comment s
+  let noop = Noop
 end
 
 module Status = struct
@@ -171,9 +164,9 @@ module Status = struct
     let open Stmt in
     function_
       "status_is_error"
-      [ test_raw_cond_of_string_with_global_named_value
+      [ test_raw_cond_of_string_with_global_name
           ~f:(sprintf "\"$1\" -gt \"$%s\"")
-          done_
+          done_.name
       ]
   ;;
 
@@ -207,10 +200,11 @@ module Comp_words = struct
       "comp_words_get_nth"
       [ raw "local i=$1"
       ; if_
-          (Cond.test_raw_of_string_with_global_named_value
+          (Cond.test_raw_of_string_with_global_name
              ~f:(sprintf "\"$i\" -ge \"$(%s)\"")
-             count)
+             count.name)
           [ return (Value.global Status.error_word_out_of_bounds) ]
+      ; raw "echo \"${COMP_WORDS[$i]}\""
       ]
   ;;
 
@@ -221,7 +215,7 @@ module Comp_words = struct
       let open Stmt in
       function_
         "comp_words_traverse_init"
-        [ raw_with_global_named_value ~f:(sprintf "%s=0") current_index ]
+        [ raw_with_global_name ~f:(sprintf "%s=0") current_index.name ]
     ;;
 
     let get_current =
@@ -235,9 +229,9 @@ module Comp_words = struct
       let open Stmt in
       function_
         "comp_words_traverse_advance"
-        [ raw_with_global_named_value
+        [ raw_with_global_name
             ~f:(fun v -> sprintf "%s=$((%s + 1))" v v)
-            current_index
+            current_index.name
         ]
     ;;
 
@@ -245,9 +239,9 @@ module Comp_words = struct
       let open Stmt in
       function_
         "comp_words_traverse_is_at_cursor"
-        [ raw_with_global_named_value
-            ~f:(sprintf "test \"$%s\" -eq \"$COMP_WORD\"")
-            current_index
+        [ raw_with_global_name
+            ~f:(sprintf "test \"$%s\" -eq \"$COMP_CWORD\"")
+            current_index.name
         ]
     ;;
 
@@ -255,9 +249,9 @@ module Comp_words = struct
       let open Stmt in
       function_
         "comp_words_traverse_is_past_cursor"
-        [ raw_with_global_named_value
-            ~f:(sprintf "test \"$%s\" -gt \"$COMP_WORD\"")
-            current_index
+        [ raw_with_global_name
+            ~f:(sprintf "test \"$%s\" -gt \"$COMP_CWORD\"")
+            current_index.name
         ]
     ;;
 
@@ -266,9 +260,9 @@ module Comp_words = struct
       function_
         "comp_words_traverse_advance_if_equals_sign"
         [ if_
-            (Cond.test_raw_of_string_with_global_named_value
+            (Cond.test_raw_of_string_with_global_name
                ~f:(sprintf "\"$(%s)\" == \"=\"")
-               current_index)
+               get_current.name)
             [ call advance [] ]
         ]
     ;;
@@ -406,9 +400,9 @@ module Reentrant_query = struct
       ; raw "local query_index=$2"
       ; raw "local current_word=$3"
       ; raw "local wrapped_command_line command suggestions"
-      ; raw_with_global_named_value
+      ; raw_with_global_name
           ~f:(sprintf "wrapped_command_line=$(eval \"%s $COMP_LINE\")")
-          wrap_command_line
+          wrap_command_line.name
       ; raw
           (sprintf
              "command=\"%s $subcommand_path_space_separated %s=$query_index \
@@ -439,11 +433,13 @@ module Hint = struct
     match t with
     | File -> call Add_reply.files [ current_word ]
     | Values values ->
-      call Add_reply.fixed [ current_word; Value.literal (String.concat ~sep:" " values) ]
+      call
+        Add_reply.fixed
+        [ current_word; Value.literal (sprintf "\"%s\"" (String.concat ~sep:" " values)) ]
     | Reentrant_index query_index ->
       call
         reentrant_query_run
-        [ Value.literal (String.concat ~sep:" " subcommand_path)
+        [ Value.literal (sprintf "\"%s\"" (String.concat ~sep:" " subcommand_path))
         ; Value.literal (string_of_int query_index)
         ; current_word
         ]
@@ -530,15 +526,46 @@ module Named_arg_value_completion = struct
     in
     function_
       (function_name ~named_arg ~subcommand_path)
-      [ raw "local current_word_up_to_cursor=$2"
-      ; call Comp_words.Traverse.advance_if_equals_sign []
-      ; if_
-          (Cond.call Comp_words.Traverse.is_past_cursor [])
-          [ return (Value.global Status.error_word_index_past_cursor) ]
-      ; if_
-          (Cond.call Comp_words.Traverse.is_at_cursor [])
-          (hints @ [ return (Value.global Status.done_) ])
-      ]
+      ([ raw "local current_word_up_to_cursor=$2"
+       ; if_
+           (Cond.call Comp_words.Traverse.is_past_cursor [])
+           [ return (Value.global Status.error_word_index_past_cursor) ]
+       ; if_
+           (Cond.call Comp_words.Traverse.is_at_cursor [])
+           ((comment "The cursor is on the parameter of the named argument." :: hints)
+            @ [ return (Value.global Status.done_) ])
+       ]
+       @
+       if Name.is_long named_arg.name
+       then
+         [ comment "Special handling for long named arguments followed by an equals sign."
+         ; comment
+             "XXX This does not detect when the equals sign is separated from the \
+              argument or value by whitespace. Using `git log --pretty=...` as an \
+              example, the following cases are treated the same: `git log \
+              --pretty=<TAB>`, `git log --pretty= <TAB>`, `git log --pretty =<TAB>`, \
+              `git log --pretty = <TAB>`. The argument parser only accepts the result of \
+              the first case. Other cases will produce an error (or possibly unexpected \
+              results) if the program is run with the completed arguments. The \
+              completion mechanisms built into bash don't provide an easy way to \
+              distinguish between the above cases. One option would be processing \
+              $COMP_LINE manually to determine whether the equals sign is separated from \
+              its argument or value by whitespace. This seems to be how git's completion \
+              script works."
+         ; if_
+             (Cond.test_raw_of_string_with_global_name
+                ~f:(sprintf "\"$(%s)\" == \"=\"")
+                Comp_words.Traverse.get_current.name)
+             [ comment
+                 "Traverse to the word following the equals sign and test again if the \
+                  traversal has reached the cursor."
+             ; call Comp_words.Traverse.advance []
+             ; if_
+                 (Cond.call Comp_words.Traverse.is_at_cursor [])
+                 (hints @ [ return (Value.global Status.done_) ])
+             ]
+         ]
+       else [])
   ;;
 end
 
@@ -569,7 +596,7 @@ module Subcommand_and_positional_arg_completion = struct
           name_with_prefix (function_name ~subcommand_path)
         in
         let stmts =
-          [ raw_with_global_named_value
+          [ raw_with_global_name
               ~f:(sprintf "%s \"$1\" \"$2\" \"$3\"")
               completion_function_name
           ; Return (Value.literal "$?")
@@ -581,10 +608,13 @@ module Subcommand_and_positional_arg_completion = struct
            if named_arg.has_param
            then (
              let completion_function_name =
-               Named_arg_value_completion.function_name ~named_arg ~subcommand_path
+               name_with_prefix
+                 (Named_arg_value_completion.function_name ~named_arg ~subcommand_path)
              in
              let stmts =
-               [ raw (sprintf "%s \"$1\" \"$2\" \"$3\"" completion_function_name)
+               [ raw_with_global_name
+                   ~f:(sprintf "%s \"$1\" \"$2\" \"$3\"")
+                   completion_function_name
                ; raw "status=$?"
                ; if_
                    (Cond.test_raw "\"$status\" -ne 0")
@@ -597,7 +627,6 @@ module Subcommand_and_positional_arg_completion = struct
     function_
       (function_name ~subcommand_path)
       [ raw "local current_word_up_to_cursor=$2"
-      ; call Comp_words.Traverse.advance_if_equals_sign []
       ; while_
           Cond.true_
           [ if_
@@ -608,15 +637,15 @@ module Subcommand_and_positional_arg_completion = struct
               [ call
                   Add_reply.fixed_no_space_if_ends_with_equals_sign
                   [ Value.literal "\"$current_word_up_to_cursor\""
-                  ; Value.literal suggestions
+                  ; Value.literal (sprintf "\"%s\"" suggestions)
                   ]
               ; return (Value.global Status.done_)
               ]
               ~else_:
                 [ raw "local current_word status"
-                ; raw_with_global_named_value
+                ; raw_with_global_name
                     ~f:(sprintf "current_word=$(%s)")
-                    Comp_words.Traverse.get_current
+                    Comp_words.Traverse.get_current.name
                 ; raw "status=$?"
                 ; if_
                     (Cond.test_raw "\"$status\" -ne 0")
@@ -635,8 +664,9 @@ module Completion_entry_point = struct
   let function_ ~program_name =
     let open Stmt in
     let completion_root_name =
-      Subcommand_and_positional_arg_completion.function_name
-        ~subcommand_path:[ program_name ]
+      name_with_prefix
+        (Subcommand_and_positional_arg_completion.function_name
+           ~subcommand_path:[ program_name ])
     in
     function_
       "completion_entry_point"
@@ -650,19 +680,19 @@ module Completion_entry_point = struct
           [ call
               Error.print
               [ Value.literal
-                  "\"Unexpected $COMP_CWORD value of 0. $COMP_CWORD should be at least 1 \
-                   as the shell uses the first word of the command line to determine \
+                  "\"Unexpected \\$COMP_CWORD value of 0. $COMP_CWORD should be at least \
+                   1 as the shell uses the first word of the command line to determine \
                    which completion script to run.\""
               ]
           ]
           ~elifs:
-            [ ( Cond.test_raw_of_string_with_global_named_value
+            [ ( Cond.test_raw_of_string_with_global_name
                   ~f:(sprintf "\"$(%s)\" -lt 2")
-                  Comp_words.count
+                  Comp_words.count.name
               , [ call
                     Error.print
                     [ Value.literal
-                        "\"Unexpected length of $COMP_WORDS array: $(%s). Its length \
+                        "\"Unexpected length of \\$COMP_WORDS array: $(%s). Its length \
                          should be at least 2 since the first element should always be \
                          the program name, and the second element will be the first word \
                          after the program name, which is expected to be the empty \
@@ -670,16 +700,16 @@ module Completion_entry_point = struct
                          program name.\""
                     ]
                 ] )
-            ; ( Cond.test_raw_of_string_with_global_named_value
+            ; ( Cond.test_raw_of_string_with_global_name
                   ~f:(fun comp_words_traverse_get_current ->
                     sprintf
                       "\"$(%s)\" != \"%s\""
                       comp_words_traverse_get_current
                       program_name)
-                  Comp_words.Traverse.get_current
+                  Comp_words.Traverse.get_current.name
               , [ call
                     Error.print
-                    [ Value.literal_with_global_named_value
+                    [ Value.literal_with_global_name
                         ~f:(fun comp_words_traverse_get_current ->
                           sprintf
                             "\"Completion script found unexpected first word of command \
@@ -689,30 +719,32 @@ module Completion_entry_point = struct
                             comp_words_traverse_get_current
                             program_name
                             program_name)
-                        Comp_words.Traverse.get_current
+                        Comp_words.Traverse.get_current.name
                     ]
                 ] )
             ]
           ~else_:
             [ call Comp_words.Traverse.advance []
-            ; raw (sprintf "%s \"$1\" \"$2\" \"$3\"" completion_root_name)
+            ; raw_with_global_name
+                ~f:(sprintf "%s \"$1\" \"$2\" \"$3\"")
+                completion_root_name
             ; case
                 (Value.literal "$?")
-                [ Status.done_value, []
+                [ Status.done_value, [ noop ]
                 ; ( Status.error_word_index_past_cursor_value
                   , [ call
                         Error.print
                         [ Value.literal
-                            "Unexpected error in completion script: Traversed command \
-                             line beyond the current cursor position"
+                            "\"Unexpected error in completion script: Traversed command \
+                             line beyond the current cursor position\""
                         ]
                     ] )
-                ; ( Status.error_word_index_past_cursor_value
+                ; ( Status.error_word_out_of_bounds_value
                   , [ call
                         Error.print
                         [ Value.literal
-                            "Unexpected error in completion script: Traversed beyond the \
-                             end of the command line"
+                            "\"Unexpected error in completion script: Traversed beyond \
+                             the end of the command line\""
                         ]
                     ] )
                 ; ( "*"
@@ -754,10 +786,10 @@ let rec functions_of_spec (spec : Spec.t) ~subcommand_path ~reentrant_query_run 
 module Bash = struct
   let rec value_to_string ~unique_prefix = function
     | Literal s -> s
-    | Literal_with_global_named_value string_with_global_named_value ->
-      Global_named_value.string_with_global_named_value_to_string
+    | Literal_with_global_name string_with_global_name ->
+      Global_named_value.string_with_global_name_to_string
         ~unique_prefix
-        string_with_global_named_value
+        string_with_global_name
     | Global global_named_value ->
       sprintf
         "\"$%s\""
@@ -775,11 +807,11 @@ module Bash = struct
     | True -> "true"
     | Call function_call -> function_call_to_string ~unique_prefix function_call
     | Test_raw_cond s -> sprintf "[ %s ]" s
-    | Test_raw_cond_of_string_with_global_named_value string_with_global_named_value ->
+    | Test_raw_cond_of_string_with_global_name string_with_global_name ->
       let s =
-        Global_named_value.string_with_global_named_value_to_string
+        Global_named_value.string_with_global_name_to_string
           ~unique_prefix
-          string_with_global_named_value
+          string_with_global_name
       in
       sprintf "[ %s ]" s
   ;;
@@ -807,11 +839,11 @@ module Bash = struct
 
   let rec stmt_to_lines_with_indent ~unique_prefix ~indent = function
     | Raw text -> [ { indent; text } ]
-    | Raw_with_global_named_value string_with_global_named_value ->
+    | Raw_with_global_name string_with_global_name ->
       let text =
-        Global_named_value.string_with_global_named_value_to_string
+        Global_named_value.string_with_global_name_to_string
           ~unique_prefix
-          string_with_global_named_value
+          string_with_global_name
       in
       [ { text; indent } ]
     | Cond c ->
@@ -870,13 +902,15 @@ module Bash = struct
       in
       List.map lines ~f:(fun line ->
         { indent; text = String.cat comment_line_prefix line })
+    | Noop -> [ { indent; text = ":" } ]
   ;;
 
-  let global_named_value_to_lines ~unique_prefix = function
-    | Global_variable { name; initial_value } ->
+  let global_named_value_to_lines ~unique_prefix { name; value } =
+    match value with
+    | Global_variable { initial_value } ->
       let name = name ~unique_prefix in
       [ { indent = 0; text = sprintf "%s=%s" name initial_value } ]
-    | Function { name; body } ->
+    | Function { body } ->
       let name = name ~unique_prefix in
       ({ indent = 0; text = sprintf "%s() {" name }
        :: List.concat_map body ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:1))
@@ -934,11 +968,15 @@ let generate_bash spec ~program_name ~program_exe =
   let globals =
     List.map all_functions ~f:(Bash.global_named_value_to_string ~unique_prefix)
   in
+  let entry_point =
+    Completion_entry_point.function_ ~program_name
+    |> Bash.global_named_value_to_string ~unique_prefix
+  in
   let last_line =
-    Stmt.raw_with_global_named_value
-      (Completion_entry_point.function_ ~program_name)
+    Stmt.raw_with_global_name
+      (Completion_entry_point.function_ ~program_name).name
       ~f:(fun complete_entry -> sprintf "complete -F %s %s" complete_entry program_name)
     |> Bash.stmt_to_string ~unique_prefix
   in
-  (header :: globals) @ [ last_line ] |> String.concat ~sep:"\n\n"
+  (header :: globals) @ [ entry_point; last_line ] |> String.concat ~sep:"\n\n"
 ;;
