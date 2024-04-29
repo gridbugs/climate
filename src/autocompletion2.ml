@@ -1,3 +1,8 @@
+(* TODO:
+   - test reentrant queries for named and positional args
+   - multiple different hints for positional arguments
+*)
+
 open! Import
 
 let sprintf = Printf.sprintf
