@@ -1243,10 +1243,10 @@ module Command = struct
 
   let add_reentrant_autocompletion_query_to_parser { Arg_parser.arg_spec; arg_compute } =
     let reentrant_autocompletion_query_name =
-      Autocompletion.reentrant_autocompletion_query_name
+      Autocompletion2.Reentrant_query.query_arg_name
     in
     let reentrant_autocompletion_command_line_name =
-      Autocompletion.reentrant_autocompletion_command_line_name
+      Autocompletion2.Reentrant_query.command_line_arg_name
     in
     let reentrant_fns, named_args =
       List.fold_left
@@ -1254,32 +1254,32 @@ module Command = struct
         ~init:([], [])
         ~f:(fun (reentrant_fns, autocompletion_args) info ->
           let has_param = Spec.Named.Info.has_param info in
-          let hint, reentrant_fns =
+          let hints, reentrant_fns =
             match info.autocompletion_hint with
-            | None -> None, reentrant_fns
-            | Some File -> Some Autocompletion.Hint.File, reentrant_fns
-            | Some (Values values) -> Some (Values values), reentrant_fns
+            | None -> [], reentrant_fns
+            | Some File -> [ Autocompletion2.Hint.File ], reentrant_fns
+            | Some (Values values) -> [ Values values ], reentrant_fns
             | Some (Reentrant f) ->
               let index = List.length reentrant_fns in
-              Some (Reentrant_index index), f :: reentrant_fns
+              [ Reentrant_index index ], f :: reentrant_fns
           in
           let args =
             List.map (Nonempty_list.to_list info.names) ~f:(fun name ->
-              { Autocompletion.Named_arg.name; has_param; hint })
+              { Autocompletion2.Named_arg.name; has_param; hints })
           in
           reentrant_fns, args @ autocompletion_args)
     in
-    let positional_args_hint, reentrant_fns =
+    let positional_args_hints, reentrant_fns =
       match Spec.Positional.first_autocompletion_hint arg_spec.positional with
-      | None -> None, reentrant_fns
-      | Some File -> Some Autocompletion.Hint.File, reentrant_fns
-      | Some (Values values) -> Some (Values values), reentrant_fns
+      | None -> [], reentrant_fns
+      | Some File -> [ Autocompletion2.Hint.File ], reentrant_fns
+      | Some (Values values) -> [ Values values ], reentrant_fns
       | Some (Reentrant f) ->
         let index = List.length reentrant_fns in
-        Some (Reentrant_index index), f :: reentrant_fns
+        [ Reentrant_index index ], f :: reentrant_fns
     in
     let reentrant_fns = List.rev reentrant_fns in
-    let parser_spec = { Autocompletion.Parser_spec.named_args; positional_args_hint } in
+    let parser_spec = { Autocompletion2.Parser_spec.named_args; positional_args_hints } in
     let arg_compute (context : Arg_parser.Context.t) =
       match
         Raw_arg_table.get_opts context.raw_arg_table reentrant_autocompletion_query_name
@@ -1341,12 +1341,12 @@ module Command = struct
       let arg_parser, parser_spec =
         add_reentrant_autocompletion_query_to_parser arg_parser
       in
-      let spec = { Autocompletion.Spec.parser_spec; subcommands = [] } in
+      let spec = { Autocompletion2.Spec.parser_spec; subcommands = [] } in
       Singleton arg_parser, spec
     | Group { children; default_arg_parser } ->
       let default_arg_parser, parser_spec =
         match default_arg_parser with
-        | None -> None, Autocompletion.Parser_spec.empty
+        | None -> None, Autocompletion2.Parser_spec.empty
         | Some arg_parser ->
           let arg_parser, parser_spec =
             add_reentrant_autocompletion_query_to_parser arg_parser
@@ -1360,18 +1360,20 @@ module Command = struct
           else (
             let command, spec = with_autocompletion_spec command in
             ( { info; command }
-            , Some { Autocompletion.Spec.name = Name.to_string info.name; spec } )))
+            , Some { Autocompletion2.Spec.name = Name.to_string info.name; spec } )))
         |> List.split
       in
       let spec =
-        { Autocompletion.Spec.parser_spec; subcommands = List.filter_opt subcommand_opts }
+        { Autocompletion2.Spec.parser_spec
+        ; subcommands = List.filter_opt subcommand_opts
+        }
       in
       Group { children; default_arg_parser }, spec
-    | Internal i -> Internal i, Autocompletion.Spec.empty
+    | Internal i -> Internal i, Autocompletion2.Spec.empty
   ;;
 
   let autocompletion_script_bash t ~program_name =
-    with_autocompletion_spec t |> snd |> Autocompletion.generate_bash ~program_name
+    with_autocompletion_spec t |> snd |> Autocompletion2.generate_bash ~program_name
   ;;
 
   let eval t (command_line : Command_line.t) =
@@ -1389,7 +1391,7 @@ module Command = struct
         Arg_parser.eval arg_parser ~args ~subcommand
       in
       print_endline
-        (Autocompletion.generate_bash autocompletion_spec ~program_name ~program_exe);
+        (Autocompletion2.generate_bash autocompletion_spec ~program_name ~program_exe);
       exit 0
   ;;
 
