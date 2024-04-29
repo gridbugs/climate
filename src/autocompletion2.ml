@@ -30,7 +30,6 @@ and value =
   | Literal of string
   | Literal_with_global_named_value of string_with_global_named_value
   | Global of global_named_value
-  | Call_output of function_call
 
 and cond =
   | True
@@ -105,7 +104,6 @@ module Value = struct
   ;;
 
   let global global_named_value = Global global_named_value
-  let call_output function_ args = Call_output { function_; args }
 end
 
 module Cond = struct
@@ -430,8 +428,6 @@ module Reentrant_query = struct
 end
 
 module Hint = struct
-  open Global_named_value
-
   type t =
     | File
     | Values of string list
@@ -562,12 +558,7 @@ module Subcommand_and_positional_arg_completion = struct
        sign *)
     let suggestions =
       List.map spec.subcommands ~f:(fun (subcommand : Spec.subcommand) -> subcommand.name)
-      @ (Spec.named_args_sorted spec
-         |> List.map ~f:(fun (named_arg : Named_arg.t) ->
-           let string_with_dashes = Name.to_string_with_dashes named_arg.name in
-           if Name.is_long named_arg.name && named_arg.has_param
-           then sprintf "%s=" string_with_dashes
-           else string_with_dashes))
+      @ (Spec.named_args_sorted spec |> List.map ~f:Named_arg.to_string)
       |> String.concat ~sep:" "
     in
     let cases =
@@ -762,8 +753,6 @@ module Bash = struct
       sprintf
         "\"$%s\""
         (Global_named_value.global_name_with_prefix ~unique_prefix global_named_value)
-    | Call_output function_call ->
-      sprintf "\"$(%s)\"" (function_call_to_string ~unique_prefix function_call)
 
   and function_call_to_string ~unique_prefix { function_; args } =
     let function_name =
@@ -910,7 +899,7 @@ let make_unique_prefix ~program_name =
     (Random.int32 Int32.max_int |> Int32.to_int)
 ;;
 
-let generate spec ~program_name ~program_exe =
+let generate_bash spec ~program_name ~program_exe =
   let reentrant_query_run = Reentrant_query.run ~program_exe in
   let static_global_values =
     Status.all_global_values
