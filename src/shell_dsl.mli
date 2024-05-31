@@ -1,5 +1,16 @@
 open! Import
 
+(** A DSL for writing shell scripts intended for use in completion
+    scripts. This provides some benefits over generating shell scripts
+    directly with strings:
+
+    - Formatting such as indentation and comment wrapping can be
+      applied automatically and in a centralized place.
+
+    - One could conceivably emit a completion script in other
+      languages besides bash one day, though this will likely require
+      some tweaking to make work. *)
+
 (** Equal to [Stmt.t]. Exposed to break a dependency cycle with
     [Global_named_value.function_]. *)
 type stmt
