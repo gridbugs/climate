@@ -441,11 +441,11 @@ module Completion_entry_point = struct
               , [ call
                     Error.print
                     [ Value.literal
-                        "Unexpected length of \\$COMP_WORDS array: $(%s). Its length \
-                         should be at least 2 since the first element should always be \
-                         the program name, and the second element will be the first word \
-                         after the program name, which is expected to be the empty \
-                         string if no additional words have been entered after the \
+                        "Unexpected length of \\$COMP_WORDS array: $(${#COMP_WORDS[@]}). \
+                         Its length should be at least 2 since the first element should \
+                         always be the program name, and the second element will be the \
+                         first word after the program name, which is expected to be the \
+                         empty string if no additional words have been entered after the \
                          program name."
                     ]
                 ] )

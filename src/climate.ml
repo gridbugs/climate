@@ -868,7 +868,7 @@ module Arg_parser = struct
     Format.flush_str_formatter ()
   ;;
 
-  let conv_untyped_completion' (type a) (conv : a conv) (completion : a Completion.t) =
+  let conv_untyped_completion (type a) (conv : a conv) (completion : a Completion.t) =
     match completion with
     | File -> Completion_spec.Hint.File
     | Values values ->
@@ -886,7 +886,7 @@ module Arg_parser = struct
     let completion_opt =
       if Option.is_some completion_opt then completion_opt else conv.completion
     in
-    Option.map completion_opt ~f:(conv_untyped_completion' conv)
+    Option.map completion_opt ~f:(conv_untyped_completion conv)
   ;;
 
   let sprintf = Printf.sprintf
