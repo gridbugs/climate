@@ -33,6 +33,19 @@ module Parser_spec : sig
   val empty : _ t
 end
 
+(** A description of an entire CLI, with just enough information to
+    generate a completion script. This is a separate type from the the
+    spec types used for parsing in an attempt to simplify the logic for
+    generating completion scripts (it's complicated enough as it is!).
+
+    Also note the type parameter ['reentrant]. This is required for
+    generating completion scripts capable of calling back into the
+    program, allowing the program itself to compute completion
+    suggestions. When running a CLI program, ['reentrant] will be a
+    function type for computing suggestions, however when generating a
+    completion script, ['reentrant] will be an integer index which
+    uniquely identifies the function to call to compute
+    suggestions. *)
 type 'reentrant t =
   { parser_spec : 'reentrant Parser_spec.t
   ; subcommands : 'reentrant subcommand list

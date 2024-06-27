@@ -7,7 +7,7 @@ let branch_conv =
     default_value_name = "BRANCH"
   ; completion =
       Some
-        (Completion.reentrant
+        (Completion.reentrant_parse
            ((* This is supposed to simulate passing an alternative
                root directory to git, and having it be respected when
                invoking git while generating completion suggestions. *)

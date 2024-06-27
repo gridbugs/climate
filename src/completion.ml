@@ -1,8 +1,6 @@
 open! Import
 open Shell_dsl
 
-let sprintf = Printf.sprintf
-
 module Status = struct
   open Global_named_value
 

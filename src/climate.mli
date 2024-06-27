@@ -1,9 +1,4 @@
-module Command_line : sig
-  type t =
-    { program : string
-    ; args : string list
-    }
-end
+module Command_line = Command_line
 
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
@@ -19,8 +14,9 @@ module Arg_parser : sig
 
     val file : string t
     val values : 'a list -> 'a t
-    val reentrant_raw : (Command_line.t -> 'a list) -> 'a t
-    val reentrant : 'a list parser -> 'a t
+    val reentrant : (Command_line.Rich.t -> 'a list) -> 'a t
+    val reentrant_parse : 'a list parser -> 'a t
+    val reentrant_thunk : (unit -> 'a list) -> 'a t
   end
 
   (** Knows how to interpret strings on the command line as a particular type
@@ -172,6 +168,7 @@ module Arg_parser : sig
       will be ignored, and it's more useful to have these functions do
       something rather than nothing. *)
   module Reentrant : sig
+    val unit : unit t
     val map : 'a t -> f:('a -> 'b) -> 'b t
     val both : 'a t -> 'b t -> ('a * 'b) t
     val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
@@ -234,7 +231,7 @@ module Command : sig
 
   (** Run the command line parser on a given list of terms. Raises a
       [Parse_error.E] if the command line is invalid. *)
-  val eval : ?eval_config:Eval_config.t -> 'a t -> Command_line.t -> 'a
+  val eval : ?eval_config:Eval_config.t -> 'a t -> Command_line.Raw.t -> 'a
 
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)
@@ -253,8 +250,11 @@ module Parse_error : sig
 end
 
 module Spec_error : sig
-  (* Errors that indicate that a client of this library has attempted to
-     create an invalid argument spec. *)
+  (** Errors that indicate that a client of this library has attempted
+      to create an invalid argument spec. These are included to aid
+      debugging when writing a CLI program with this library, though a
+      user of a CLI tool should never encounter one of these, no
+      matter which arguments they pass. *)
   type t
 
   exception E of t

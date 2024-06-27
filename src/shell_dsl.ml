@@ -1,7 +1,5 @@
 open! Import
 
-let sprintf = Printf.sprintf
-
 type global_name = unique_prefix:string -> string
 
 type global_value =

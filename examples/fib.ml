@@ -19,7 +19,7 @@ let () =
          pos_all
            int
            ~completion:
-             (Completion.reentrant
+             (Completion.reentrant_parse
                 (let+ all = pos_all int in
                  let x =
                    match List.rev all with
