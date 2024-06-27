@@ -1,6 +1,6 @@
 open! Import
 
-type global_name = unique_prefix:string -> string
+type global_name = global_symbol_prefix:string -> string
 
 type global_value =
   | Global_variable of { initial_value : string }
@@ -65,17 +65,20 @@ and stmt =
 module Global_name = struct
   type t = global_name
 
-  let with_prefix name ~unique_prefix = String.cat unique_prefix name
+  let with_prefix name ~global_symbol_prefix = String.cat global_symbol_prefix name
 end
 
 module Global_named_value = struct
   type t = global_named_value
 
   let name t = t.name
-  let global_name_with_prefix ~unique_prefix t = t.name ~unique_prefix
+  let global_name_with_prefix ~global_symbol_prefix t = t.name ~global_symbol_prefix
 
-  let string_with_global_name_to_string ~unique_prefix { string_of_name; global_name } =
-    string_of_name (global_name ~unique_prefix)
+  let string_with_global_name_to_string
+    ~global_symbol_prefix
+    { string_of_name; global_name }
+    =
+    string_of_name (global_name ~global_symbol_prefix)
   ;;
 
   let global_variable ~name ~initial_value =
@@ -148,36 +151,38 @@ module Stmt = struct
 end
 
 module Bash = struct
-  let rec value_to_string ~unique_prefix = function
+  let rec value_to_string ~global_symbol_prefix = function
     | Literal s -> sprintf "\"%s\"" s
     | Literal_with_global_name string_with_global_name ->
       let s =
         Global_named_value.string_with_global_name_to_string
-          ~unique_prefix
+          ~global_symbol_prefix
           string_with_global_name
       in
       sprintf "\"%s\"" s
     | Global global_named_value ->
       sprintf
         "\"$%s\""
-        (Global_named_value.global_name_with_prefix ~unique_prefix global_named_value)
+        (Global_named_value.global_name_with_prefix
+           ~global_symbol_prefix
+           global_named_value)
 
-  and function_call_to_string ~unique_prefix { function_; args } =
+  and function_call_to_string ~global_symbol_prefix { function_; args } =
     let function_name =
-      Global_named_value.global_name_with_prefix ~unique_prefix function_
+      Global_named_value.global_name_with_prefix ~global_symbol_prefix function_
     in
-    let args_strings = List.map args ~f:(value_to_string ~unique_prefix) in
+    let args_strings = List.map args ~f:(value_to_string ~global_symbol_prefix) in
     String.concat ~sep:" " (function_name :: args_strings)
   ;;
 
-  let cond_to_string ~unique_prefix = function
+  let cond_to_string ~global_symbol_prefix = function
     | True -> "true"
-    | Call function_call -> function_call_to_string ~unique_prefix function_call
+    | Call function_call -> function_call_to_string ~global_symbol_prefix function_call
     | Test_raw_cond s -> sprintf "[ %s ]" s
     | Test_raw_cond_of_string_with_global_name string_with_global_name ->
       let s =
         Global_named_value.string_with_global_name_to_string
-          ~unique_prefix
+          ~global_symbol_prefix
           string_with_global_name
       in
       sprintf "[ %s ]" s
@@ -204,53 +209,64 @@ module Bash = struct
       List.rev line |> String.concat ~sep:(String.make 1 sep))
   ;;
 
-  let rec stmt_to_lines_with_indent ~unique_prefix ~indent = function
+  let rec stmt_to_lines_with_indent ~global_symbol_prefix ~indent = function
     | Raw text -> [ { indent; text } ]
     | Raw_with_global_name string_with_global_name ->
       let text =
         Global_named_value.string_with_global_name_to_string
-          ~unique_prefix
+          ~global_symbol_prefix
           string_with_global_name
       in
       [ { text; indent } ]
     | Cond c ->
-      let text = cond_to_string ~unique_prefix c in
+      let text = cond_to_string ~global_symbol_prefix c in
       [ { text; indent } ]
     | If { if_; elifs; else_ } ->
-      ({ indent; text = sprintf "if %s; then" (cond_to_string ~unique_prefix if_.cond) }
+      ({ indent
+       ; text = sprintf "if %s; then" (cond_to_string ~global_symbol_prefix if_.cond)
+       }
        :: List.concat_map
             if_.body
-            ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:(indent + 1)))
+            ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
       @ List.concat_map elifs ~f:(fun { cond; body } ->
-        { indent; text = sprintf "elif %s; then" (cond_to_string ~unique_prefix cond) }
+        { indent
+        ; text = sprintf "elif %s; then" (cond_to_string ~global_symbol_prefix cond)
+        }
         :: List.concat_map
              body
-             ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:(indent + 1)))
+             ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
       @ (match else_ with
          | None -> []
          | Some stmts ->
            { indent; text = "else" }
            :: List.concat_map
                 stmts
-                ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:(indent + 1)))
+                ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
       @ [ { indent; text = "fi" } ]
     | Case { value; patterns } ->
-      ({ indent; text = sprintf "case %s in" (value_to_string ~unique_prefix value) }
+      ({ indent
+       ; text = sprintf "case %s in" (value_to_string ~global_symbol_prefix value)
+       }
        :: List.concat_map patterns ~f:(fun { pattern; case_body } ->
          ({ indent = indent + 1; text = sprintf "%s)" pattern }
           :: List.concat_map
                case_body
-               ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:(indent + 2)))
+               ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 2)))
          @ [ { indent = indent + 2; text = ";;" } ]))
       @ [ { indent; text = "esac" } ]
     | While { cond; body } ->
-      ({ indent; text = sprintf "while %s; do" (cond_to_string ~unique_prefix cond) }
+      ({ indent
+       ; text = sprintf "while %s; do" (cond_to_string ~global_symbol_prefix cond)
+       }
        :: List.concat_map
             body
-            ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:(indent + 1)))
+            ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
       @ [ { indent; text = "done" } ]
     | Return value ->
-      [ { indent; text = sprintf "return %s" (value_to_string ~unique_prefix value) } ]
+      [ { indent
+        ; text = sprintf "return %s" (value_to_string ~global_symbol_prefix value)
+        }
+      ]
     | Comment comment ->
       let comment_line_prefix = "# " in
       let max_line_length =
@@ -270,13 +286,13 @@ module Bash = struct
       | _ -> true)
   ;;
 
-  let global_named_value_to_lines ~unique_prefix { name; value } =
+  let global_named_value_to_lines ~global_symbol_prefix { name; value } =
     match value with
     | Global_variable { initial_value } ->
-      let name = name ~unique_prefix in
+      let name = name ~global_symbol_prefix in
       [ { indent = 0; text = sprintf "%s=%s" name initial_value } ]
     | Function { body } ->
-      let name = name ~unique_prefix in
+      let name = name ~global_symbol_prefix in
       let body =
         if List.is_empty (remove_comments body)
         then
@@ -286,7 +302,9 @@ module Bash = struct
         else body
       in
       let body =
-        List.concat_map body ~f:(stmt_to_lines_with_indent ~unique_prefix ~indent:1)
+        List.concat_map
+          body
+          ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:1)
       in
       ({ indent = 0; text = sprintf "%s() {" name } :: body)
       @ [ { indent = 0; text = "}" } ]
@@ -300,11 +318,12 @@ module Bash = struct
     |> String.concat ~sep:"\n"
   ;;
 
-  let global_named_value_to_string ~unique_prefix global_named_value =
-    global_named_value_to_lines ~unique_prefix global_named_value |> lines_to_string
+  let global_named_value_to_string ~global_symbol_prefix global_named_value =
+    global_named_value_to_lines ~global_symbol_prefix global_named_value
+    |> lines_to_string
   ;;
 
-  let stmt_to_string ~unique_prefix stmt =
-    stmt_to_lines_with_indent ~indent:0 ~unique_prefix stmt |> lines_to_string
+  let stmt_to_string ~global_symbol_prefix stmt =
+    stmt_to_lines_with_indent ~indent:0 ~global_symbol_prefix stmt |> lines_to_string
   ;;
 end

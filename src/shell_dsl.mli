@@ -70,9 +70,9 @@ end
 
 module Bash : sig
   val global_named_value_to_string
-    :  unique_prefix:string
+    :  global_symbol_prefix:string
     -> Global_named_value.t
     -> string
 
-  val stmt_to_string : unique_prefix:string -> Stmt.t -> string
+  val stmt_to_string : global_symbol_prefix:string -> Stmt.t -> string
 end

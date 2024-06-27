@@ -226,7 +226,7 @@ module Arg_parser = struct
   let const x = { arg_spec = Spec.empty; arg_compute = Fun.const x }
   let unit = const ()
 
-  let program_name =
+  let argv0 =
     { arg_spec = Spec.empty; arg_compute = (fun context -> context.command_line.program) }
   ;;
 
@@ -512,7 +512,9 @@ end
 module Completion_config = struct
   type t =
     { program_name : string
-    ; program_exe : string
+    ; program_exe_for_reentrant_query : [ `Program_name | `Other of string ]
+    ; global_symbol_prefix : [ `Random | `Custom of string ]
+    ; command_hash_in_function_names : bool
     }
 
   (* An internal argument parser accepting arguments for configuring
@@ -528,26 +530,55 @@ module Completion_config = struct
            ~value_name:"PROGRAM"
            [ "program-name" ]
            string
-       and+ program_exe =
+       and+ program_exe_for_reentrant_query =
          named_opt
            ~desc:
              "Program to run when executing reentrant queries. This should usually be \
-              the same as program-name. Will default to argv[0]."
+              the same as program-name. Will default to argv[0]. Note that it defaults \
+              to argv[0] rather than the value of program-name to help with development \
+              workflows, where it's common to manually register a short name as the \
+              program-name for testing, but the exe to run is inside a development \
+              directory (such as _build)."
            ~value_name:"PROGRAM"
-           [ "program-exe" ]
+           [ "program-exe-for-reentrant-query" ]
            string
+       and+ global_symbol_prefix =
+         named_opt
+           ~desc:
+             "Prefix to use for global symbols in generated completion script. Defaults \
+              to \"__climate_complete\" followed by a random int."
+           ~value_name:"PREFIX"
+           [ "global-symbol-prefix" ]
+           string
+       and+ no_command_hash_in_function_names =
+         flag
+           ~desc:
+             "Don't add hashes of subcommands to the names of functions that compute \
+              suggestions. Hashes are added by default to prevent collisions between \
+              generated functions, but such collisions are rare in practice and \
+              disabling hashes makes the generated code easier to read."
+           [ "no-command-hash-in-function-names" ]
        in
        let program_name =
          match program_name with
          | Some program_name -> program_name
          | None -> Sys.argv.(0)
        in
-       let program_exe =
-         match program_exe with
-         | Some program_exe -> program_exe
-         | None -> Sys.argv.(0)
+       let program_exe_for_reentrant_query =
+         match program_exe_for_reentrant_query with
+         | Some program_exe_for_reentrant_query -> `Other program_exe_for_reentrant_query
+         | None -> `Other Sys.argv.(0)
        in
-       { program_name; program_exe })
+       let global_symbol_prefix =
+         match global_symbol_prefix with
+         | Some global_symbol_prefix -> `Custom global_symbol_prefix
+         | None -> `Random
+       in
+       { program_name
+       ; program_exe_for_reentrant_query
+       ; global_symbol_prefix
+       ; command_hash_in_function_names = not no_command_hash_in_function_names
+       })
   ;;
 end
 
@@ -666,15 +697,19 @@ module Command = struct
 
   let completion_script_bash
     ?(eval_config = Eval_config.default)
+    ?(program_exe_for_reentrant_query = `Program_name)
+    ?(global_symbol_prefix = `Random)
+    ?(command_hash_in_function_names = true)
     t
     ~program_name
-    ~program_exe
     =
     completion_spec t
     |> Completion.generate_bash
          ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
          ~program_name
-         ~program_exe
+         ~program_exe_for_reentrant_query
+         ~global_symbol_prefix
+         ~command_hash_in_function_names
   ;;
 
   module Reentrant_query = struct
@@ -770,15 +805,22 @@ module Command = struct
          into the regular parser logic because it needs to be the
          completion spec, which isn't available to regular argument
          parsers. *)
-      let { Completion_config.program_name; program_exe } =
+      let { Completion_config.program_name
+          ; program_exe_for_reentrant_query
+          ; global_symbol_prefix
+          ; command_hash_in_function_names
+          }
+        =
         Arg_parser.eval Completion_config.arg_parser ~command_line ~ignore_errors:false
       in
       print_endline
         (Completion.generate_bash
            completion_spec
            ~program_name
-           ~program_exe
-           ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name);
+           ~program_exe_for_reentrant_query
+           ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
+           ~global_symbol_prefix
+           ~command_hash_in_function_names);
       exit 0
   ;;
 

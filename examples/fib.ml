@@ -14,7 +14,7 @@ let () =
   let command =
     singleton
       (let open Arg_parser in
-       let+ program_name = program_name
+       let+ argv0 = argv0
        and+ _ =
          pos_all
            int
@@ -29,9 +29,13 @@ let () =
                  in
                  [ x ]))
        in
-       program_name)
+       argv0)
   in
-  let program_name = run command in
+  let program_exe_for_reentrant_query = `Other (run command) in
   print_endline
-    (completion_script_bash command ~program_name:"fib" ~program_exe:program_name)
+    (completion_script_bash
+       command
+       ~program_name:"fib"
+       ~program_exe_for_reentrant_query
+       ~global_symbol_prefix:(`Custom "__fib__"))
 ;;

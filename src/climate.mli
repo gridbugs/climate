@@ -67,9 +67,9 @@ module Arg_parser : sig
   (** A parser that takes no arguments and returns [()], included for testing purposes *)
   val unit : unit t
 
-  (** A parser that resolves to the program's name. Specifically it
-      resolves to the value of argv[0]. *)
-  val program_name : string t
+  (** A parser that resolves to the program name as it appeared on the
+      command line. *)
+  val argv0 : string t
 
   (** A named argument that may appear multiple times on the command line. *)
   val named_multi
@@ -222,11 +222,41 @@ module Command : sig
       bury this inside a hidden command group of internal commands. *)
   val print_completion_script_bash : _ t
 
+  (** Returns a bash script that can be sourced in a shell to register
+      completions for the command.
+
+      [program_name] will be the name which the completion script is
+      registered under in the shell, and should be the main way users
+      will call the program. Usually this should be the name of the
+      executable that will be installed in the user's PATH.
+
+      [program_exe_for_reentrant_query] determines how the completion script
+      will call back into the program when resolving a reentrant query. Pass
+      [`Program_name] (the default) to have the completion script run the
+      value of the [program_name] argument. In order to experiment with
+      completion scripts during development, pass [`Other "path/to/exe"]
+      instead, to allow the completion script to find the development
+      executable. For example one might pass
+      [`Other "_build/default/bin/foo.exe"] if building with dune.
+
+      [global_symbol_prefix] determines the prefix of global symbols in
+      the generated script
+
+      [command_hash_in_function_names] determines if function names are
+      augmented with a hash of the subcommand path and argument (if
+      applicable) for which the generated function computes completion
+      suggestions. This helps to avoid cases where multiple functions
+      are generated with the same names due to the names of subcommands
+      to the program colliding with mangled names of generated
+      functions. This should be rare in practice but to be safe this
+      defaults to [true]. *)
   val completion_script_bash
     :  ?eval_config:Eval_config.t
+    -> ?program_exe_for_reentrant_query:[ `Program_name | `Other of string ]
+    -> ?global_symbol_prefix:[ `Random | `Custom of string ]
+    -> ?command_hash_in_function_names:bool
     -> _ t
     -> program_name:string
-    -> program_exe:string
     -> string
 
   (** Run the command line parser on a given list of terms. Raises a

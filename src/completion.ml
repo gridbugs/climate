@@ -193,13 +193,23 @@ let hint_add_reply (hint : int Completion_spec.Hint.t) ~reentrant_query_run ~cur
 module Named_arg_value_completion = struct
   open Global_named_value
 
-  let function_name ~(named_arg : _ Completion_spec.Named_arg.t) ~subcommand_path =
-    (* Add the hash of the name to the function name to avoid
-       collisions between function names *)
-    let hash = Hashtbl.hash (named_arg, subcommand_path) in
+  let function_name
+    ~(named_arg : _ Completion_spec.Named_arg.t)
+    ~subcommand_path
+    ~command_hash_in_function_names
+    =
+    let prefix =
+      if command_hash_in_function_names
+      then (
+        (* Add the hash of the name to the function name to avoid
+           collisions between function names *)
+        let hash = Hashtbl.hash (named_arg, subcommand_path) in
+        sprintf "hash_%d__" hash)
+      else ""
+    in
     sprintf
-      "hash_%d__%s_%s"
-      hash
+      "%s%s_%s"
+      prefix
       (String.concat ~sep:"__" (List.rev subcommand_path))
       (Name.to_string_with_dashes named_arg.name)
   ;;
@@ -210,6 +220,7 @@ module Named_arg_value_completion = struct
     ~(named_arg : _ Completion_spec.Named_arg.t)
     ~subcommand_path
     ~reentrant_query_run
+    ~command_hash_in_function_names
     =
     let open Stmt in
     let hints =
@@ -222,7 +233,7 @@ module Named_arg_value_completion = struct
       |> Option.to_list
     in
     function_
-      (function_name ~named_arg ~subcommand_path)
+      (function_name ~named_arg ~subcommand_path ~command_hash_in_function_names)
       [ raw "local current_word_up_to_cursor=$2"
       ; if_
           (Cond.call Comp_words.Traverse.is_past_cursor [])
@@ -238,16 +249,29 @@ end
 module Subcommand_and_positional_arg_completion = struct
   open Global_named_value
 
-  let function_name ~subcommand_path =
-    (* Add the hash of the name to the function name to avoid
-       collisions between function names *)
-    let hash = Hashtbl.hash subcommand_path in
-    sprintf "hash_%d__%s" hash (String.concat ~sep:"__" (List.rev subcommand_path))
+  let function_name ~subcommand_path ~command_hash_in_function_names =
+    let prefix =
+      if command_hash_in_function_names
+      then (
+        (* Add the hash of the name to the function name to avoid
+           collisions between function names *)
+        let hash = Hashtbl.hash subcommand_path in
+        sprintf "hash_%d__" hash)
+      else ""
+    in
+    sprintf "%s%s" prefix (String.concat ~sep:"__" (List.rev subcommand_path))
   ;;
 
-  let functions ~(spec : _ Completion_spec.t) ~subcommand_path ~reentrant_query_run =
+  let functions
+    ~(spec : _ Completion_spec.t)
+    ~subcommand_path
+    ~reentrant_query_run
+    ~command_hash_in_function_names
+    =
     let open Stmt in
-    let base_function_name = function_name ~subcommand_path in
+    let base_function_name =
+      function_name ~subcommand_path ~command_hash_in_function_names
+    in
     let complete_named_args_function =
       function_
         (sprintf "%s:complete_named_args" base_function_name)
@@ -316,7 +340,8 @@ module Subcommand_and_positional_arg_completion = struct
          List.map spec.subcommands ~f:(fun (subcommand : _ Completion_spec.subcommand) ->
            let subcommand_path = subcommand.name :: subcommand_path in
            let completion_function_name =
-             Global_name.with_prefix (function_name ~subcommand_path)
+             Global_name.with_prefix
+               (function_name ~subcommand_path ~command_hash_in_function_names)
            in
            let stmts =
              [ raw_with_global_name
@@ -332,7 +357,10 @@ module Subcommand_and_positional_arg_completion = struct
               then (
                 let completion_function_name =
                   Global_name.with_prefix
-                    (Named_arg_value_completion.function_name ~named_arg ~subcommand_path)
+                    (Named_arg_value_completion.function_name
+                       ~named_arg
+                       ~subcommand_path
+                       ~command_hash_in_function_names)
                 in
                 let stmts =
                   [ raw_with_global_name
@@ -412,15 +440,16 @@ end
 module Completion_entry_point = struct
   open Global_named_value
 
-  let function_ ~program_name =
+  let function_ ~program_name ~command_hash_in_function_names =
     let open Stmt in
     let completion_root_name =
       Global_name.with_prefix
         (Subcommand_and_positional_arg_completion.function_name
-           ~subcommand_path:[ program_name ])
+           ~subcommand_path:[]
+           ~command_hash_in_function_names)
     in
     function_
-      "completion_entry_point"
+      "complete"
       [ call Comp_words.Traverse.init []
       ; if_
           (Cond.test_raw "\"$COMP_CWORD\" == \"0\"")
@@ -509,6 +538,7 @@ let rec functions_of_spec
   (spec : _ Completion_spec.t)
   ~subcommand_path
   ~reentrant_query_run
+  ~command_hash_in_function_names
   =
   let named_arg_completion_functions =
     List.filter_map
@@ -520,7 +550,8 @@ let rec functions_of_spec
             (Named_arg_value_completion.function_
                ~named_arg
                ~subcommand_path
-               ~reentrant_query_run)
+               ~reentrant_query_run
+               ~command_hash_in_function_names)
         else None)
   in
   let subcommand_and_positional_arg_completion =
@@ -528,36 +559,53 @@ let rec functions_of_spec
       ~spec
       ~subcommand_path
       ~reentrant_query_run
+      ~command_hash_in_function_names
   in
   let subcommand_completions =
     List.concat_map
       spec.subcommands
       ~f:(fun (subcommand : _ Completion_spec.subcommand) ->
         let subcommand_path = subcommand.name :: subcommand_path in
-        functions_of_spec subcommand.spec ~subcommand_path ~reentrant_query_run)
+        functions_of_spec
+          subcommand.spec
+          ~subcommand_path
+          ~reentrant_query_run
+          ~command_hash_in_function_names)
   in
   subcommand_completions
   @ named_arg_completion_functions
   @ subcommand_and_positional_arg_completion
 ;;
 
-let bash_header ~program_name ~unique_prefix =
+let bash_header ~program_name ~global_symbol_prefix =
   let open Stmt in
   [ raw "#!/usr/bin/env bash"
   ; comment (sprintf "Completion script for %s. Generated by climate." program_name)
   ]
-  |> List.map ~f:(Bash.stmt_to_string ~unique_prefix)
+  |> List.map ~f:(Bash.stmt_to_string ~global_symbol_prefix)
   |> String.concat ~sep:"\n"
 ;;
 
-let make_unique_prefix () =
+let make_random_prefix () =
   Random.self_init ();
   sprintf "__climate_complete_%d__" (Random.int32 Int32.max_int |> Int32.to_int)
 ;;
 
-let generate_bash spec ~program_name ~program_exe ~print_reentrant_completions_name =
+let generate_bash
+  spec
+  ~program_name
+  ~program_exe_for_reentrant_query
+  ~print_reentrant_completions_name
+  ~global_symbol_prefix
+  ~command_hash_in_function_names
+  =
   let spec = Completion_spec.replace_reentrants_with_indices spec in
   let reentrant_query_run =
+    let program_exe =
+      match program_exe_for_reentrant_query with
+      | `Program_name -> program_name
+      | `Other program_exe -> program_exe
+    in
     Reentrant_query.run ~program_exe ~print_reentrant_completions_name
   in
   let static_global_values =
@@ -568,23 +616,32 @@ let generate_bash spec ~program_name ~program_exe ~print_reentrant_completions_n
     @ [ reentrant_query_run ]
   in
   let completion_functions =
-    functions_of_spec spec ~subcommand_path:[ program_name ] ~reentrant_query_run
+    functions_of_spec
+      spec
+      ~subcommand_path:[]
+      ~reentrant_query_run
+      ~command_hash_in_function_names
   in
   let all_functions = static_global_values @ completion_functions in
-  let unique_prefix = make_unique_prefix () in
-  let header = bash_header ~program_name ~unique_prefix in
+  let global_symbol_prefix =
+    match global_symbol_prefix with
+    | `Random -> make_random_prefix ()
+    | `Custom s -> s
+  in
+  let header = bash_header ~program_name ~global_symbol_prefix in
   let globals =
-    List.map all_functions ~f:(Bash.global_named_value_to_string ~unique_prefix)
+    List.map all_functions ~f:(Bash.global_named_value_to_string ~global_symbol_prefix)
   in
   let entry_point =
-    Completion_entry_point.function_ ~program_name
-    |> Bash.global_named_value_to_string ~unique_prefix
+    Completion_entry_point.function_ ~program_name ~command_hash_in_function_names
+    |> Bash.global_named_value_to_string ~global_symbol_prefix
   in
   let last_line =
     Stmt.raw_with_global_name
-      (Global_named_value.name (Completion_entry_point.function_ ~program_name))
+      (Global_named_value.name
+         (Completion_entry_point.function_ ~program_name ~command_hash_in_function_names))
       ~f:(fun complete_entry -> sprintf "complete -F %s %s" complete_entry program_name)
-    |> Bash.stmt_to_string ~unique_prefix
+    |> Bash.stmt_to_string ~global_symbol_prefix
   in
   (header :: globals) @ [ entry_point; last_line ] |> String.concat ~sep:"\n\n"
 ;;
