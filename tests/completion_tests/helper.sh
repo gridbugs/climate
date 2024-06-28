@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-
-set -u
-
+#
 # Print the completion suggestions of a given completion function on
 # some input and a cursor position.
 #
