@@ -19,7 +19,4 @@ completion_test() {
     COMP_LINE="$2"
     cursor_line="$3"
     read -r -a COMP_WORDS <<< "$COMP_LINE"
-    if [ ${#COMP_WORDS[@]} == 1 ]; then
-	COMP_WORDS+=("")
-    fi
 }
