@@ -1,3 +1,6 @@
+  $ pwd
+  $ tree
+  $ tree ..
   $ . ../helper.sh
   $ ./main.exe > completion.sh
   $ . ./completion.sh
