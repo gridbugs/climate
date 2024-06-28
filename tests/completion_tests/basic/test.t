@@ -1,6 +1,8 @@
   $ pwd
   $ tree
   $ tree ..
+  $ echo $SHELL
+  $ $SHELL --version
   $ . ../helper.sh
   $ ./main.exe > completion.sh
   $ . ./completion.sh
