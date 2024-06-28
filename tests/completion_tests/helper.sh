@@ -15,5 +15,17 @@ set -u
 # is lined up with the character in the command line where the cursor
 # is located.
 completion_test() {
-    echo TODO
+    completion_function="$1"
+    COMP_LINE="$2"
+    cursor_line="$3"
+    read -r -a COMP_WORDS <<< "$COMP_LINE"
+    if [ ${#COMP_WORDS[@]} == 1 ]; then
+	COMP_WORDS+=("")
+    fi
+    local first_word="${COMP_WORDS[0]}"
+    COMP_CWORD=0
+    local length=${#cursor_line}
+    local curr_word=""
+    local prev_word=""
+    local prev_char=" "
 }
