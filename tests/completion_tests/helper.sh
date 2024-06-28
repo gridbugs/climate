@@ -22,10 +22,4 @@ completion_test() {
     if [ ${#COMP_WORDS[@]} == 1 ]; then
 	COMP_WORDS+=("")
     fi
-    local first_word="${COMP_WORDS[0]}"
-    COMP_CWORD=0
-    local length=${#cursor_line}
-    local curr_word=""
-    local prev_word=""
-    local prev_char=" "
 }
