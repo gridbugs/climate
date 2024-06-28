@@ -1,0 +1,6 @@
+(executable
+ (public_name main)
+ (libraries climate))
+
+(cram
+ (deps main.exe))

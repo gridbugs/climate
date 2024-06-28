@@ -274,7 +274,7 @@ module Subcommand_and_positional_arg_completion = struct
     in
     let complete_named_args_function =
       function_
-        (sprintf "%s:complete_named_args" base_function_name)
+        (sprintf "%s__complete_named_args" base_function_name)
         [ comment
             "Takes the portion of the word under the cursor before the cursor and adds \
              comp replies for all named arguments begining with that prefix."
@@ -291,7 +291,7 @@ module Subcommand_and_positional_arg_completion = struct
     in
     let complete_subcommands_function =
       function_
-        (sprintf "%s:complete_subcommands" base_function_name)
+        (sprintf "%s__complete_subcommands" base_function_name)
         [ comment
             "Takes the portion of the word under the cursor before the cursor and adds \
              comp replies for all subcommands begining with that prefix."
@@ -325,7 +325,7 @@ module Subcommand_and_positional_arg_completion = struct
         | Some (`Hint hint) -> [ "*", [ stmt_of_hint hint ] ]
       in
       function_
-        (sprintf "%s:complete_positional_args" base_function_name)
+        (sprintf "%s__complete_positional_args" base_function_name)
         [ comment
             "Takes the portion of the word under the cursor before the cursor and the \
              index of the current positional argument on the command line and adds comp \
@@ -468,7 +468,7 @@ module Completion_entry_point = struct
               , [ call
                     Error.print
                     [ Value.literal
-                        "Unexpected length of \\$COMP_WORDS array: $(${#COMP_WORDS[@]}). \
+                        "Unexpected length of \\$COMP_WORDS array: ${#COMP_WORDS[@]}. \
                          Its length should be at least 2 since the first element should \
                          always be the program name, and the second element will be the \
                          first word after the program name, which is expected to be the \
@@ -591,6 +591,27 @@ let make_random_prefix () =
   sprintf "__climate_complete_%d__" (Random.int32 Int32.max_int |> Int32.to_int)
 ;;
 
+(* Generate a bash completion script, expected to be sourced in a
+   shell to enable tab completion according to a provided spec. The
+   script defines a completion function which is registered with the
+   shell. The contract between this completion function and the shell
+   is as follows:
+
+   The function takes three arguments:
+   $1 is the name of the command whose arguments are being completed
+   $2 is the current word being completed up to the cursor
+   $3 is the word preceding the current word being completed
+
+   Additionally the function expects some global variables to be
+   defined:
+   $COMP_WORDS is an array of all the words in the current command line
+   $COMP_LINE is a string containing the current command line
+   $COMP_CWORD is an index into $COMP_WORDS of the word under the cursor
+
+   The function also expects a global variable $COMPREPLY to be
+   defined, and it will populate this array with completion
+   suggestions.
+*)
 let generate_bash
   spec
   ~program_name
