@@ -18,5 +18,4 @@ completion_test() {
     completion_function="$1"
     COMP_LINE="$2"
     cursor_line="$3"
-    read -r -a COMP_WORDS <<< "$COMP_LINE"
 }
