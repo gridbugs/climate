@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 
+# Usage: ./print_completions.sh COMPLETION_SCRIPT COMPLETION_FUNCTION COMMAND_LINE CURSOR_LINE
+# Prints the completion suggestions if a user was to press TAB on a
+# given command line with the cursor at the position indicated by
+# CURSOR_LINE. CURSOR_LINE is expected to be a string where the first
+# non-space character is at the position of the cursor. This is so
+# that test scripts can be formatted with COMMAND_LINE and CURSOR_LINE
+# on separate lines to make it visually clear which character of the
+# command line is under the cursor.
+# COMPLETION_SCRIPT is the name of a script that defines bash
+# completion rules, and COMPLETION_FUNCTION is the name of the
+# function defined in that script registered with `complete`.
+
 set -u
 
 # Print the completion suggestions of a given completion function on
@@ -15,9 +27,9 @@ set -u
 # is lined up with the character in the command line where the cursor
 # is located.
 completion_test() {
-    completion_function="$1"
-    COMP_LINE="$2"
-    cursor_line="$3"
+    local completion_function="$1"
+    local COMP_LINE="$2"
+    local cursor_line="$3"
     read -r -a COMP_WORDS <<< "$COMP_LINE"
     if [ ${#COMP_WORDS[@]} == 1 ]; then
 	COMP_WORDS+=("")
@@ -47,3 +59,14 @@ completion_test() {
     $completion_function "$first_word" "$curr_word" "$prev_word"
     printf "%s\n" "${COMPREPLY[@]}"
 }
+
+main () {
+    local completion_script="$1"
+    local completion_function="$2"
+    local COMP_LINE="$3"
+    local cursor_line="$4"
+    . "$completion_script"
+    completion_test "$completion_function" "$COMP_LINE" "$cursor_line"
+}
+
+main "$1" "$2" "$3" "$4"

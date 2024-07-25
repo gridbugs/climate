@@ -1,10 +1,8 @@
-  $ . ../helper.sh
   $ ./main.exe > completion.sh
-  $ . ./completion.sh
-  $ x() { completion_test _basic_complete "$1" "$2"; }
+  $ x() { ../print_completions.sh ./completion.sh _basic_complete "$1" "$2"; }
 
   $ x "basic " \
-  >   "      ^" 
+  >   "      ^"
   --bar
   --baz
   --foo
@@ -29,7 +27,7 @@
   --baz
 
   $ x "basic --bar" \
-  >   "           ^" 
+  >   "           ^"
   --bar
 
   $ x "basic --bar " \
@@ -47,11 +45,12 @@
   --foo
   --help
   -h
+
   $ x "basic --foo --bar" \
   >   "         ^       "
   --foo
 
   $ x "basic --bar --foo" \
-  >   "         ^       " 
+  >   "         ^       "
   --bar
   --baz
