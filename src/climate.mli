@@ -219,7 +219,10 @@ module Command : sig
 
   (** A command that has the side effect of printing the completion
       script of the entire command it's contained inside. It's safe to
-      bury this inside a hidden command group of internal commands. *)
+      bury this inside a hidden command group of internal
+      commands. The command takes some arguments to configure the
+      generated completion script, similar to the arguments of the
+      function [completion_script_bash]. *)
   val print_completion_script_bash : _ t
 
   (** Returns a bash script that can be sourced in a shell to register

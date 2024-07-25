@@ -1,0 +1,6 @@
+(executable
+ (public_name fake_git)
+ (libraries climate unix))
+
+(cram
+ (deps fake_git.exe))

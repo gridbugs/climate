@@ -1,4 +1,4 @@
-  $ ./main.exe > completion.sh
+  $ ./basic.exe > completion.sh
   $ x() { ../print_completions.sh ./completion.sh _basic_complete "$1" "$2"; }
 
   $ x "basic " \
