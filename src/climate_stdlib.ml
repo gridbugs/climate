@@ -42,6 +42,7 @@ module Option = struct
   include Option
 
   let map t ~f = map f t
+  let iter t ~f = iter f t
 end
 
 module List = struct

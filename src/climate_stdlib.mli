@@ -30,6 +30,7 @@ module Option : sig
   include module type of Option
 
   val map : 'a t -> f:('a -> 'b) -> 'b t
+  val iter : 'a t -> f:('a -> unit) -> unit
 end
 
 module List : sig

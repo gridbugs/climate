@@ -53,6 +53,7 @@ let bisect_common =
 let () =
   let open Command in
   group
+    ~desc:"Fake version control"
     [ subcommand "config" (singleton Arg_parser.unit)
     ; subcommand "checkout" (singleton checkout)
     ; subcommand "commit" (singleton commit)
@@ -61,8 +62,9 @@ let () =
         "bisect"
         (group
            ~default_arg_parser:bisect_common
-           [ subcommand "start" (singleton bisect_common)
-           ; subcommand "replay" (singleton bisect_common)
+           ~desc:"Binary search through previous commits."
+           [ subcommand "start" (singleton bisect_common ~desc:"Start a bisect.")
+           ; subcommand "reset" (singleton bisect_common ~desc:"Stop a bisect.")
            ])
     ; subcommand ~hidden:true "__internal" print_completion_script_bash
     ]

@@ -22,7 +22,6 @@ module Parse_error = struct
     | Named_opt_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Named_req_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Flag_appeared_multiple_times of (Name.t Nonempty_list.t * int)
-    | Incomplete_command
     | Conv_failed of
         { locator : [ `Named of Name.t | `Positional of int ]
         ; message : string
@@ -80,8 +79,6 @@ module Parse_error = struct
         "The flag %S was passed %d times but must may only appear at most once."
         (names_to_string_hum names)
         n
-    | Incomplete_command ->
-      "The command is incomplete. Additional subcommands are required to form a command."
     | Conv_failed { locator; message } ->
       let locator_string =
         match locator with

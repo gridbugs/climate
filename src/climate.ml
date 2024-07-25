@@ -10,6 +10,8 @@ let name_of_string_exn string =
   | Error e -> raise Spec_error.(E (Invalid_name (string, e)))
 ;;
 
+exception Usage
+
 module Arg_parser = struct
   module Context = struct
     type t =
@@ -452,19 +454,65 @@ module Arg_parser = struct
   let pos_all ?value_name ?completion conv = pos_right ?value_name ?completion 0 conv
   let validate t = Spec.validate t.arg_spec
 
-  let pp_help ppf arg_spec ~subcommand =
+  let pp_help
+    ppf
+    arg_spec
+    (command_line : Command_line.Rich.t)
+    ~description
+    ~child_subcommands
+    =
     Format.pp_print_string ppf "Usage:";
-    List.iter subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
-    Spec.usage ppf arg_spec;
+    if not (Spec.is_empty arg_spec)
+    then (
+      Format.fprintf ppf " %s" command_line.program;
+      List.iter command_line.subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
+      Spec.usage ppf arg_spec;
+      Format.pp_print_newline ppf ());
+    if not (List.is_empty child_subcommands)
+    then (
+      (* Line up with the regular usage line *)
+      if not (Spec.is_empty arg_spec) then Format.pp_print_string ppf "      ";
+      Format.fprintf ppf " %s" command_line.program;
+      List.iter command_line.subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
+      Format.pp_print_string ppf " [SUBCOMMAND]";
+      Format.pp_print_newline ppf ());
     Format.pp_print_newline ppf ();
-    Format.pp_print_newline ppf ();
-    Spec.named_help ppf arg_spec
+    Option.iter description ~f:(fun description ->
+      Format.fprintf ppf "%s" description;
+      Format.pp_print_newline ppf ();
+      Format.pp_print_newline ppf ());
+    if not (Spec.Named.is_empty arg_spec.named) then Spec.named_help ppf arg_spec;
+    if not (List.is_empty child_subcommands)
+    then (
+      if not (Spec.Named.is_empty arg_spec.named) then Format.pp_print_newline ppf ();
+      Format.pp_print_string ppf "Subcommands:";
+      Format.pp_print_newline ppf ();
+      List.iter child_subcommands ~f:(fun (name, description_opt) ->
+        Format.fprintf ppf " %s" (Name.to_string name);
+        Option.iter description_opt ~f:(fun description ->
+          Format.fprintf ppf "  %s" description);
+        Format.pp_print_newline ppf ()))
   ;;
 
-  let add_help { arg_spec; arg_compute } =
-    let help_spec =
-      Spec.create_flag Built_in.help_names ~desc:(Some "Print help") ~hidden:false
-    in
+  let help_spec =
+    Spec.create_flag Built_in.help_names ~desc:(Some "Print help") ~hidden:false
+  ;;
+
+  let usage ~description ~child_subcommands =
+    { arg_spec = Spec.empty
+    ; arg_compute =
+        (fun context ->
+          pp_help
+            Format.std_formatter
+            help_spec
+            context.command_line
+            ~description
+            ~child_subcommands;
+          raise Usage)
+    }
+  ;;
+
+  let add_help { arg_spec; arg_compute } ~description ~child_subcommands =
     let arg_spec = Spec.merge arg_spec help_spec in
     { arg_spec
     ; arg_compute =
@@ -475,15 +523,17 @@ module Arg_parser = struct
             pp_help
               Format.std_formatter
               arg_spec
-              ~subcommand:context.command_line.subcommand;
-            exit 0)
+              context.command_line
+              ~description
+              ~child_subcommands;
+            raise Usage)
           else arg_compute context)
     }
   ;;
 
-  let finalize t =
+  let finalize t ~description ~child_subcommands =
     validate t;
-    add_help t
+    add_help t ~description ~child_subcommands
   ;;
 
   module Reentrant = struct
@@ -521,64 +571,63 @@ module Completion_config = struct
      how the completion script is printed *)
   let arg_parser =
     let open Arg_parser in
-    Arg_parser.finalize
-      (let+ program_name =
-         named_opt
-           ~desc:
-             "Name to register this completion script with in the shell. Should be the \
-              name of this program's executable. Will default to argv[0]."
-           ~value_name:"PROGRAM"
-           [ "program-name" ]
-           string
-       and+ program_exe_for_reentrant_query =
-         named_opt
-           ~desc:
-             "Program to run when executing reentrant queries. This should usually be \
-              the same as program-name. Will default to argv[0]. Note that it defaults \
-              to argv[0] rather than the value of program-name to help with development \
-              workflows, where it's common to manually register a short name as the \
-              program-name for testing, but the exe to run is inside a development \
-              directory (such as _build)."
-           ~value_name:"PROGRAM"
-           [ "program-exe-for-reentrant-query" ]
-           string
-       and+ global_symbol_prefix =
-         named_opt
-           ~desc:
-             "Prefix to use for global symbols in generated completion script. Defaults \
-              to \"__climate_complete\" followed by a random int."
-           ~value_name:"PREFIX"
-           [ "global-symbol-prefix" ]
-           string
-       and+ no_command_hash_in_function_names =
-         flag
-           ~desc:
-             "Don't add hashes of subcommands to the names of functions that compute \
-              suggestions. Hashes are added by default to prevent collisions between \
-              generated functions, but such collisions are rare in practice and \
-              disabling hashes makes the generated code easier to read."
-           [ "no-command-hash-in-function-names" ]
-       in
-       let program_name =
-         match program_name with
-         | Some program_name -> program_name
-         | None -> Sys.argv.(0)
-       in
-       let program_exe_for_reentrant_query =
-         match program_exe_for_reentrant_query with
-         | Some program_exe_for_reentrant_query -> `Other program_exe_for_reentrant_query
-         | None -> `Other Sys.argv.(0)
-       in
-       let global_symbol_prefix =
-         match global_symbol_prefix with
-         | Some global_symbol_prefix -> `Custom global_symbol_prefix
-         | None -> `Random
-       in
-       { program_name
-       ; program_exe_for_reentrant_query
-       ; global_symbol_prefix
-       ; command_hash_in_function_names = not no_command_hash_in_function_names
-       })
+    let+ program_name =
+      named_opt
+        ~desc:
+          "Name to register this completion script with in the shell. Should be the name \
+           of this program's executable. Will default to argv[0]."
+        ~value_name:"PROGRAM"
+        [ "program-name" ]
+        string
+    and+ program_exe_for_reentrant_query =
+      named_opt
+        ~desc:
+          "Program to run when executing reentrant queries. This should usually be the \
+           same as program-name. Will default to argv[0]. Note that it defaults to \
+           argv[0] rather than the value of program-name to help with development \
+           workflows, where it's common to manually register a short name as the \
+           program-name for testing, but the exe to run is inside a development \
+           directory (such as _build)."
+        ~value_name:"PROGRAM"
+        [ "program-exe-for-reentrant-query" ]
+        string
+    and+ global_symbol_prefix =
+      named_opt
+        ~desc:
+          "Prefix to use for global symbols in generated completion script. Defaults to \
+           \"__climate_complete\" followed by a random int."
+        ~value_name:"PREFIX"
+        [ "global-symbol-prefix" ]
+        string
+    and+ no_command_hash_in_function_names =
+      flag
+        ~desc:
+          "Don't add hashes of subcommands to the names of functions that compute \
+           suggestions. Hashes are added by default to prevent collisions between \
+           generated functions, but such collisions are rare in practice and disabling \
+           hashes makes the generated code easier to read."
+        [ "no-command-hash-in-function-names" ]
+    in
+    let program_name =
+      match program_name with
+      | Some program_name -> program_name
+      | None -> Sys.argv.(0)
+    in
+    let program_exe_for_reentrant_query =
+      match program_exe_for_reentrant_query with
+      | Some program_exe_for_reentrant_query -> `Other program_exe_for_reentrant_query
+      | None -> `Other Sys.argv.(0)
+    in
+    let global_symbol_prefix =
+      match global_symbol_prefix with
+      | Some global_symbol_prefix -> `Custom global_symbol_prefix
+      | None -> `Random
+    in
+    { program_name
+    ; program_exe_for_reentrant_query
+    ; global_symbol_prefix
+    ; command_hash_in_function_names = not no_command_hash_in_function_names
+    }
   ;;
 end
 
@@ -595,7 +644,11 @@ end
 module Command = struct
   type internal = Print_completion_script_bash
 
-  module Info = struct
+  let internal_description = function
+    | Print_completion_script_bash -> "Print the bash completion script for this program."
+  ;;
+
+  module Subcommand_info = struct
     type t =
       { name : Name.t
       ; hidden : bool
@@ -603,27 +656,54 @@ module Command = struct
   end
 
   type 'a t =
-    | Singleton of 'a Arg_parser.t
+    | Singleton of
+        { arg_parser : 'a Arg_parser.t
+        ; description : string option
+        }
     | Group of
         { children : 'a subcommand list
-        ; default_arg_parser : 'a Arg_parser.t option
+        ; default_arg_parser : 'a Arg_parser.t
+        ; description : string option
         }
     | Internal of internal
 
   and 'a subcommand =
-    { info : Info.t
+    { info : Subcommand_info.t
     ; command : 'a t
     }
 
-  let singleton term = Singleton (Arg_parser.finalize term)
-
-  let subcommand ?(hidden = false) name_string command =
-    { info = { Info.name = name_of_string_exn name_string; hidden }; command }
+  let command_description = function
+    | Singleton { description; _ } | Group { description; _ } -> description
+    | Internal internal -> Some (internal_description internal)
   ;;
 
-  let group ?default_arg_parser children =
-    let default_arg_parser = Option.map default_arg_parser ~f:Arg_parser.finalize in
-    Group { children; default_arg_parser }
+  let singleton ?desc arg_parser =
+    let description = desc in
+    Singleton
+      { arg_parser = Arg_parser.finalize arg_parser ~description ~child_subcommands:[]
+      ; description
+      }
+  ;;
+
+  let subcommand ?(hidden = false) name_string command =
+    { info = { Subcommand_info.name = name_of_string_exn name_string; hidden }; command }
+  ;;
+
+  let group ?default_arg_parser ?desc children =
+    let description = desc in
+    let child_subcommands =
+      List.filter_map children ~f:(fun { info; command } ->
+        if info.hidden then None else Some (info.name, command_description command))
+    in
+    let default_arg_parser =
+      match default_arg_parser with
+      | None -> Arg_parser.usage ~description ~child_subcommands
+      | Some default_arg_parser -> default_arg_parser
+    in
+    let default_arg_parser =
+      Arg_parser.finalize default_arg_parser ~description ~child_subcommands
+    in
+    Group { children; default_arg_parser; description }
   ;;
 
   let print_completion_script_bash = Internal Print_completion_script_bash
@@ -636,10 +716,10 @@ module Command = struct
 
   let rec traverse t args subcommand_acc =
     match t, args with
-    | Singleton arg_parser, args ->
+    | Singleton { arg_parser; description = _ }, args ->
       Ok
         { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
-    | Group { children; default_arg_parser }, x :: xs ->
+    | Group { children; default_arg_parser; description = _ }, x :: xs ->
       let subcommand =
         List.find_map children ~f:(fun { info = { name; _ }; command } ->
           if String.equal (Name.to_string name) x then Some command else None)
@@ -647,29 +727,23 @@ module Command = struct
       (match subcommand with
        | Some subcommand -> traverse subcommand xs (x :: subcommand_acc)
        | None ->
-         (match default_arg_parser with
-          | Some arg_parser ->
-            Ok
-              { operation = `Arg_parser arg_parser
-              ; args = x :: xs
-              ; subcommand = List.rev subcommand_acc
-              }
-          | None -> Error Parse_error.Incomplete_command))
-    | Group { children = _; default_arg_parser }, [] ->
-      (match default_arg_parser with
-       | Some arg_parser ->
          Ok
-           { operation = `Arg_parser arg_parser
-           ; args = []
+           { operation = `Arg_parser default_arg_parser
+           ; args = x :: xs
            ; subcommand = List.rev subcommand_acc
-           }
-       | None -> Error Parse_error.Incomplete_command)
+           })
+    | Group { children = _; default_arg_parser; description = _ }, [] ->
+      Ok
+        { operation = `Arg_parser default_arg_parser
+        ; args = []
+        ; subcommand = List.rev subcommand_acc
+        }
     | Internal internal, args ->
       Ok { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
   ;;
 
   let rec completion_spec = function
-    | Singleton arg_parser ->
+    | Singleton { arg_parser; description = _ } ->
       let parser_spec = Spec.to_completion_parser_spec arg_parser.arg_spec in
       { Completion_spec.parser_spec; subcommands = [] }
     | Internal Print_completion_script_bash ->
@@ -677,13 +751,8 @@ module Command = struct
         Spec.to_completion_parser_spec Completion_config.arg_parser.arg_spec
       in
       { Completion_spec.parser_spec; subcommands = [] }
-    | Group { children; default_arg_parser } ->
-      let parser_spec =
-        match default_arg_parser with
-        | Some default_arg_parser ->
-          Spec.to_completion_parser_spec default_arg_parser.arg_spec
-        | None -> Completion_spec.Parser_spec.empty
-      in
+    | Group { children; default_arg_parser; description = _ } ->
+      let parser_spec = Spec.to_completion_parser_spec default_arg_parser.arg_spec in
       let subcommands =
         List.filter_map children ~f:(fun { info; command } ->
           if info.hidden
@@ -801,6 +870,12 @@ module Command = struct
          program logic. *)
       Arg_parser.eval arg_parser ~command_line ~ignore_errors:false
     | `Internal Print_completion_script_bash ->
+      let arg_parser =
+        Arg_parser.finalize
+          Completion_config.arg_parser
+          ~description:(Some (internal_description Print_completion_script_bash))
+          ~child_subcommands:[]
+      in
       (* Print the completion script. Note that this can't be combined
          into the regular parser logic because it needs to be the
          completion spec, which isn't available to regular argument
@@ -811,7 +886,7 @@ module Command = struct
           ; command_hash_in_function_names
           }
         =
-        Arg_parser.eval Completion_config.arg_parser ~command_line ~ignore_errors:false
+        Arg_parser.eval arg_parser ~command_line ~ignore_errors:false
       in
       print_endline
         (Completion.generate_bash
@@ -829,6 +904,7 @@ module Command = struct
     | Parse_error.E e ->
       Printf.eprintf "%s" (Parse_error.to_string e);
       exit Parse_error.exit_code
+    | Usage -> exit 0
   ;;
 end
 

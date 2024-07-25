@@ -198,12 +198,15 @@ module Eval_config : sig
   val default : t
 end
 
+(** Raised if the command being evaluated printed a usage message *)
+exception Usage
+
 module Command : sig
   type 'a t
 
   (** Declare a single command. Performs some checks that the parser is
       well-formed and raises a [Spec_error.E] if iat's invalid. *)
-  val singleton : 'a Arg_parser.t -> 'a t
+  val singleton : ?desc:string -> 'a Arg_parser.t -> 'a t
 
   type 'a subcommand
 
@@ -215,7 +218,11 @@ module Command : sig
       sequences of subcommands may terminating with this command and will be
       passed with that argument. Performs some checks that each parser is
       well-formed and raises a [Spec_error.E] if an invalid parser is found.*)
-  val group : ?default_arg_parser:'a Arg_parser.t -> 'a subcommand list -> 'a t
+  val group
+    :  ?default_arg_parser:'a Arg_parser.t
+    -> ?desc:string
+    -> 'a subcommand list
+    -> 'a t
 
   (** A command that has the side effect of printing the completion
       script of the entire command it's contained inside. It's safe to

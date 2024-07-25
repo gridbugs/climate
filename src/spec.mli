@@ -31,6 +31,8 @@ module Named : sig
   (** Spec for a set of named arguments *)
   type t
 
+  val is_empty : t -> bool
+
   (** Returns the [Info.t] for an argument with a given name *)
   val get_info_by_name : t -> Name.t -> Info.t option
 end
@@ -84,6 +86,7 @@ type t =
   }
 
 val empty : t
+val is_empty : t -> bool
 
 (** [merge a b] returns a spec containing the union of arguments in
     [a] and [b]. Raises a [Error.Spec_error.E _] if [a] and [b] conflict,

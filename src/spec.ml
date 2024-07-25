@@ -54,6 +54,7 @@ module Named = struct
   type t = { infos : Info.t list }
 
   let empty = { infos = [] }
+  let is_empty { infos } = List.is_empty infos
 
   let get_info_by_name { infos } name =
     List.find_opt infos ~f:(fun (info : Info.t) ->
@@ -115,6 +116,10 @@ module Positional = struct
     }
 
   let empty = { all_above_inclusive = None; other_value_names_by_index = Int.Map.empty }
+
+  let is_empty { all_above_inclusive; other_value_names_by_index } =
+    Option.is_none all_above_inclusive && Int.Map.is_empty other_value_names_by_index
+  ;;
 
   let check_value_names index value_name1 value_name2 =
     if not (String.equal value_name1 value_name2)
@@ -274,6 +279,11 @@ let merge x y =
 ;;
 
 let empty = { named = Named.empty; positional = Positional.empty }
+
+let is_empty { named; positional } =
+  Named.is_empty named && Positional.is_empty positional
+;;
+
 let create_positional positional = { named = Named.empty; positional }
 
 let create_named info =
@@ -309,7 +319,7 @@ let usage ppf { named; positional } =
 let named_help ppf { named; _ } =
   if not (List.is_empty named.infos) then Format.pp_print_string ppf "Options:";
   Format.pp_print_newline ppf ();
-  List.iter named.infos ~f:(fun (info : Named.Info.t) ->
+  List.iter (List.rev named.infos) ~f:(fun (info : Named.Info.t) ->
     if not info.hidden
     then (
       Format.pp_print_string ppf " ";

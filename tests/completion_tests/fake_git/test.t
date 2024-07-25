@@ -18,13 +18,13 @@ Make a fake .git directory with some branches.
   foo
 
   $ x "fake-git checkout foo " \
-  >   "                      ^"
+  >   "                      ^" | sort
   .git
   completion.sh
   fake_git.exe
 
   $ x "fake-git checkout foo a.txt " \
-  >   "                            ^"
+  >   "                            ^" | sort
   .git
   completion.sh
   fake_git.exe
@@ -35,7 +35,7 @@ Make a fake .git directory with some branches.
   foo
 
   $ x "fake-git checkout foo a.txt " \
-  >   "                      ^     "
+  >   "                      ^     " | sort
   .git
   completion.sh
   fake_git.exe

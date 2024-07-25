@@ -89,16 +89,6 @@ let%expect_test "optional option passed multiple times" =
   [%expect {| The option "-f" was passed 2 times but may only appear at most once. |}]
 ;;
 
-let%expect_test "incomplete subcommand" =
-  let term = Arg_parser.const () in
-  let command = Command.group [ Command.subcommand "foo" (Command.singleton term) ] in
-  run command [ "foo" ];
-  [%expect {| |}];
-  run command [];
-  [%expect
-    {| The command is incomplete. Additional subcommands are required to form a command. |}]
-;;
-
 let%expect_test "value conversion failed" =
   let term = Arg_parser.(named_opt [ "f" ] int) in
   let command = Command.singleton term in
