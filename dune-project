@@ -4,3 +4,6 @@
 
 (package
  (name climate))
+
+(package
+ (name climate_cmdliner))

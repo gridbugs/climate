@@ -50,13 +50,15 @@ module Arg_parser = struct
   type 'a print = Format.formatter -> 'a -> unit
 
   module Completion = struct
-    (* Roughly duplicated from [Spec.Untyped_completion.t] but
+    (* Roughly duplicated from [Spec.Untyped_completion.t] bu
+       t
        with types that correspond to the type of the [conv] it will be
        part of. *)
     type _ t =
       | File : string t
       | Values : 'a list -> 'a t
       | Reentrant : (Command_line.Rich.t -> 'a list) -> 'a t
+      | Some : 'a t -> 'a option t
 
     let file = File
     let values values = Values values
@@ -71,6 +73,8 @@ module Arg_parser = struct
       let f (_ : Command_line.Rich.t) = f () in
       Reentrant f
     ;;
+
+    let some t = Some t
   end
 
   type 'a conv =
@@ -80,19 +84,31 @@ module Arg_parser = struct
     ; completion : 'a Completion.t option
     }
 
-  let conv_value_to_string conv value =
-    conv.print Format.str_formatter value;
+  let value_to_string print value =
+    print Format.str_formatter value;
     Format.flush_str_formatter ()
   ;;
 
-  let conv_untyped_completion (type a) (conv : a conv) (completion : a Completion.t) =
+  let rec conv_untyped_completion
+    : type a.
+      a print
+      -> a Completion.t
+      -> (Command_line.Rich.t -> string list) Completion_spec.Hint.t
+    =
+    fun print completion ->
     match completion with
     | File -> Completion_spec.Hint.File
     | Values values ->
-      Completion_spec.Hint.Values (List.map values ~f:(conv_value_to_string conv))
+      Completion_spec.Hint.Values (List.map values ~f:(value_to_string print))
     | Reentrant f ->
       Completion_spec.Hint.Reentrant
-        (fun command_line -> f command_line |> List.map ~f:(conv_value_to_string conv))
+        (fun command_line -> f command_line |> List.map ~f:(value_to_string print))
+    | Some completion ->
+      let print ppf v =
+        let v' : a = Some v in
+        print ppf v'
+      in
+      conv_untyped_completion print completion
   ;;
 
   (* A conv can have a built in completion, but it's also possible for
@@ -103,7 +119,7 @@ module Arg_parser = struct
     let completion_opt =
       if Option.is_some completion_opt then completion_opt else conv.completion
     in
-    Option.map completion_opt ~f:(conv_untyped_completion conv)
+    Option.map completion_opt ~f:(conv_untyped_completion conv.print)
   ;;
 
   let string =
@@ -219,6 +235,14 @@ module Arg_parser = struct
   let ( let+ ) = ( >>| )
   let ( and+ ) = both
 
+  let apply f x =
+    let+ f = f
+    and+ x = x in
+    f x
+  ;;
+
+  let ( $ ) f x = apply f x
+
   let names_of_strings strings =
     match Nonempty_list.of_list strings with
     | None -> raise Spec_error.(E Empty_name_list)
@@ -314,7 +338,7 @@ module Arg_parser = struct
       { names = names_of_strings names
       ; has_param =
           `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
-      ; default_string = Some (conv_value_to_string conv default)
+      ; default_string = Some (value_to_string conv.print default)
       ; required = false
       ; desc
       ; completion = conv_untyped_completion_opt_with_default conv completion

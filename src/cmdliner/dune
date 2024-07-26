@@ -1,0 +1,3 @@
+(library
+ (public_name climate_cmdliner)
+ (libraries climate))

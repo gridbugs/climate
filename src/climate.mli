@@ -17,6 +17,10 @@ module Arg_parser : sig
     val reentrant : (Command_line.Rich.t -> 'a list) -> 'a t
     val reentrant_parse : 'a list parser -> 'a t
     val reentrant_thunk : (unit -> 'a list) -> 'a t
+
+    (** For use in cases the optionality of a value being
+        parsed/completed needs to represented in the value itself. *)
+    val some : 'a t -> 'a option t
   end
 
   (** Knows how to interpret strings on the command line as a particular type
@@ -60,6 +64,12 @@ module Arg_parser : sig
   val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
   val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
+
+  (** The apply operator in the parlance of applicative functors. *)
+  val apply : ('a -> 'b) t -> 'a t -> 'b t
+
+  (** Shorthand for [apply]. *)
+  val ( $ ) : ('a -> 'b) t -> 'a t -> 'b t
 
   (** A parser that ignores the command line and always yields the same value *)
   val const : 'a -> 'a t
@@ -161,7 +171,7 @@ module Arg_parser : sig
 
   (** Stripped down versions of some functions from the parent module
       for use in reentrant completion functions. None of the
-      documentation arguments are present as there is no access
+      documentation arguments are present as there is no access to
       documentation for the parsers for these functions. Parsers that
       would fail when passed multiple times no longer fail under this
       condition, since any errors encountered during autocompletion
