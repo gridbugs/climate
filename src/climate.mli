@@ -130,8 +130,8 @@ module Arg_parser : sig
   (** A flag that may appear at most once on the command line. *)
   val flag : ?desc:string -> string list -> bool t
 
-  (** [pos i conv] declares an optional anonymous positional argument at position
-      [i] (starting at 0). *)
+  (** [pos_opt i conv] declares an optional anonymous positional
+      argument at position [i] (starting at 0). *)
   val pos_opt
     :  ?value_name:string
     -> ?completion:'a Completion.t
@@ -139,8 +139,18 @@ module Arg_parser : sig
     -> 'a conv
     -> 'a option t
 
-  (** [pos i conv] declares a required anonymous positional argument at position
-      [i] (starting at 0). *)
+  (** [pos_with_default i conv] declares an optional anonymous positional
+      argument with a default value at position [i] (starting at 0). *)
+  val pos_with_default
+    :  ?value_name:string
+    -> ?completion:'a Completion.t
+    -> int
+    -> 'a conv
+    -> default:'a
+    -> 'a t
+
+  (** [pos_req i conv] declares a required anonymous positional
+      argument at position [i] (starting at 0). *)
   val pos_req
     :  ?value_name:string
     -> ?completion:'a Completion.t

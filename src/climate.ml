@@ -423,6 +423,13 @@ module Arg_parser = struct
     pos_single_gen i conv ~value_name ~required:false ~completion
   ;;
 
+  let pos_with_default ?value_name ?completion i conv ~default =
+    pos_opt ?value_name ?completion i conv
+    |> map ~f:(function
+      | Some x -> x
+      | None -> default)
+  ;;
+
   let pos_req ?value_name ?completion i conv =
     pos_single_gen i conv ~value_name ~required:true ~completion
     |> map ~f:(function
