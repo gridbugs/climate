@@ -157,7 +157,8 @@ let%expect_test "arguments and subcommands" =
       [ subcommand "log" log; subcommand "commit" commit ]
   in
   run command [];
-  [%expect {|
+  [%expect
+    {|
     Usage: foo.exe [OPTIONS]
            foo.exe [SUBCOMMAND]
 
@@ -171,7 +172,8 @@ let%expect_test "arguments and subcommands" =
      commit  Make a new commit
     |}];
   run command [ "--help" ];
-  [%expect {|
+  [%expect
+    {|
     Usage: foo.exe [OPTIONS]
            foo.exe [SUBCOMMAND]
 
@@ -185,7 +187,8 @@ let%expect_test "arguments and subcommands" =
      commit  Make a new commit
     |}];
   run command [ "log"; "--help" ];
-  [%expect {|
+  [%expect
+    {|
     Usage: foo.exe log [OPTIONS]
 
     List recent commits
@@ -195,7 +198,8 @@ let%expect_test "arguments and subcommands" =
      --help, -h   Print help
     |}];
   run command [ "commit"; "--help" ];
-  [%expect {|
+  [%expect
+    {|
     Usage: foo.exe commit [OPTIONS]
 
     Make a new commit
