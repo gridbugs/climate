@@ -3,7 +3,9 @@
 (cram enable)
 
 (package
- (name climate))
+ (name climate)
+ (depends ocaml dune))
 
 (package
- (name climate_cmdliner))
+ (name climate_cmdliner)
+ (depends ocaml dune))
