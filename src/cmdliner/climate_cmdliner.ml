@@ -263,10 +263,9 @@ module Arg = struct
 
   let man_format = Term.const `Auto
 
-  let pair ?(sep = ',') (pa0, pr0) (pa1, pr1) =
-    let parser _ = failwith "todo parser" in
-    let printer _ _ = failwith "todo printer" in
-    parser, printer
+  let pair ?(sep = ',') a b =
+    Climate.Arg_parser.pair ~sep (conv_to_climate a) (conv_to_climate b)
+    |> conv_of_climate
   ;;
 
   let doc_alts_enum _ = "TODO"
