@@ -67,6 +67,10 @@ module Arg_parser : sig
       the first occurance of [sep] (',' by default). *)
   val pair : ?sep:char -> 'a conv -> 'b conv -> ('a * 'b) conv
 
+  (** [pair ~sep a b] returns a conv for a list of values separated by
+      [sep] (',' by default). *)
+  val list : ?sep:char -> 'a conv -> 'a list conv
+
   val map : 'a t -> f:('a -> 'b) -> 'b t
   val both : 'a t -> 'b t -> ('a * 'b) t
   val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t

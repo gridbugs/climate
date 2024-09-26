@@ -220,7 +220,7 @@ module Arg_parser = struct
   let pair ?(sep = ',') a b =
     let parse string =
       match String.split_on_char ~sep string with
-      | [] | [ _ ] -> Error (`Msg "foo")
+      | [] | [ _ ] -> Error (`Msg (sprintf "No separator (%c) found in %S" sep string))
       | x :: xs ->
         let rest = String.concat ~sep:(String.make 1 sep) xs in
         Result.bind (a.parse x) ~f:(fun ax ->
@@ -232,6 +232,20 @@ module Arg_parser = struct
       b.print ppf bx
     in
     { parse; print; default_value_name = "PAIR"; completion = None }
+  ;;
+
+  let list ?(sep = ',') element_conv =
+    let parse string =
+      Result.List.all (String.split_on_char ~sep string |> List.map ~f:element_conv.parse)
+    in
+    let print ppf elements =
+      Format.pp_print_list
+        ~pp_sep:(fun ppf () -> Format.pp_print_char ppf sep)
+        element_conv.print
+        ppf
+        elements
+    in
+    { parse; print; default_value_name = "LIST"; completion = None }
   ;;
 
   type 'a nonempty_list = 'a Nonempty_list.t = ( :: ) of ('a * 'a list)

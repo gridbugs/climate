@@ -243,8 +243,7 @@ module Arg = struct
   ;;
 
   let list ?sep conv =
-    print_endline "todo";
-    (fun _ -> `Ok []), fun ppf _ -> Format.pp_print_string ppf "todo"
+    Climate.Arg_parser.list ?sep (conv_to_climate conv) |> conv_of_climate
   ;;
 
   let opt_all conv default { desc; names; value_name } =
