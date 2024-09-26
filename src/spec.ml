@@ -68,7 +68,7 @@ module Named = struct
 
   let add t (info : Info.t) =
     List.iter (Nonempty_list.to_list info.names) ~f:(fun name ->
-      if contains_name t name then raise Spec_error.(E (Duplicate_name name)));
+      if contains_name t name then Error.spec_error (Duplicate_name name));
     { infos = info :: t.infos }
   ;;
 
@@ -124,11 +124,9 @@ module Positional = struct
   let check_value_names index value_name1 value_name2 =
     if not (String.equal value_name1 value_name2)
     then
-      raise
-        Spec_error.(
-          E
-            (Positional_argument_collision_with_different_value_names
-               { index; value_name1; value_name2 }))
+      Error.spec_error
+        (Positional_argument_collision_with_different_value_names
+           { index; value_name1; value_name2 })
   ;;
 
   let trim_map t =
@@ -144,8 +142,7 @@ module Positional = struct
               check_value_names index value_name all_above_inclusive.value_name;
               if required
               then
-                raise
-                  Spec_error.(E (Conflicting_requiredness_for_positional_argument index));
+                Error.spec_error (Conflicting_requiredness_for_positional_argument index);
               false)
             else true)
       in
@@ -159,8 +156,7 @@ module Positional = struct
         | Some x ->
           check_value_names index x.value_name value_name;
           if x.required <> required
-          then
-            raise Spec_error.(E (Conflicting_requiredness_for_positional_argument index));
+          then Error.spec_error (Conflicting_requiredness_for_positional_argument index);
           Some x)
     in
     trim_map { t with other_value_names_by_index }
@@ -202,9 +198,7 @@ module Positional = struct
           | Some x, Some y ->
             check_value_names index x.value_name y.value_name;
             if x.required <> y.required
-            then
-              raise
-                Spec_error.(E (Conflicting_requiredness_for_positional_argument index));
+            then Error.spec_error (Conflicting_requiredness_for_positional_argument index);
             Some x)
     in
     trim_map { all_above_inclusive; other_value_names_by_index }
@@ -348,8 +342,8 @@ let to_completion_parser_spec { named; positional } =
 let validate { named; positional } =
   (match Positional.validate_no_gaps positional with
    | Ok () -> ()
-   | Error e -> raise (Spec_error.E e));
+   | Error e -> Error.spec_error e);
   match Named.validate_no_built_in_names named with
   | Ok () -> ()
-  | Error e -> raise (Spec_error.E e)
+  | Error e -> Error.spec_error e
 ;;

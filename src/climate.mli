@@ -1,5 +1,3 @@
-module Command_line = Command_line
-
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
   (** A parser of values of type ['a] *)
@@ -12,9 +10,15 @@ module Arg_parser : sig
     type 'a parser := 'a t
     type 'a t
 
+    type command_line =
+      { program : string
+      ; subcommand : string list
+      ; args : string list
+      }
+
     val file : string t
     val values : 'a list -> 'a t
-    val reentrant : (Command_line.Rich.t -> 'a list) -> 'a t
+    val reentrant : (command_line -> 'a list) -> 'a t
     val reentrant_parse : 'a list parser -> 'a t
     val reentrant_thunk : (unit -> 'a list) -> 'a t
 
@@ -58,6 +62,10 @@ module Arg_parser : sig
   (** [string_enum values ~eq] returns a conv for a concrete set of possible
       strings. *)
   val string_enum : ?default_value_name:string -> string list -> string conv
+
+  (** [pair ~sep a b] returns a conv for a pair of values separated by
+      the first occurance of [sep] (',' by default). *)
+  val pair : ?sep:char -> 'a conv -> 'b conv -> ('a * 'b) conv
 
   val map : 'a t -> f:('a -> 'b) -> 'b t
   val both : 'a t -> 'b t -> ('a * 'b) t
@@ -289,9 +297,16 @@ module Command : sig
     -> program_name:string
     -> string
 
-  (** Run the command line parser on a given list of terms. Raises a
-      [Parse_error.E] if the command line is invalid. *)
-  val eval : ?eval_config:Eval_config.t -> 'a t -> Command_line.Raw.t -> 'a
+  (** Run the command on given arguments. Raises a [Parse_error.E] if
+      the command line is invalid. By default the program name will be
+      taken from [Sys.argv.(0)] but this can be overriden via the
+      [program_name] argument. *)
+  val eval
+    :  ?eval_config:Eval_config.t
+    -> ?program_name:[ `Argv0 | `Literal of string ]
+    -> 'a t
+    -> string list
+    -> 'a
 
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)

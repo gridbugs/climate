@@ -2,7 +2,7 @@ open Climate
 open Command
 
 let run command args =
-  try eval command { Command_line.Raw.args; program = "foo.exe" } with
+  try eval ~program_name:(`Literal "foo.exe") command args with
   | Usage -> ()
 ;;
 

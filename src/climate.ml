@@ -1,13 +1,11 @@
 open! Import
-module Nonempty_list = Climate_stdlib.Nonempty_list
 module Parse_error = Error.Parse_error
 module Spec_error = Error.Spec_error
-module Command_line = Command_line
 
 let name_of_string_exn string =
   match Name.of_string string with
   | Ok name -> name
-  | Error e -> raise Spec_error.(E (Invalid_name (string, e)))
+  | Error e -> Error.spec_error (Invalid_name (string, e))
 ;;
 
 exception Usage
@@ -50,13 +48,19 @@ module Arg_parser = struct
   type 'a print = Format.formatter -> 'a -> unit
 
   module Completion = struct
+    type command_line = Command_line.Rich.t =
+      { program : string
+      ; subcommand : string list
+      ; args : string list
+      }
+
     (* Roughly duplicated from [Spec.Untyped_completion.t] but
        with types that correspond to the type of the [conv] it will be
        part of. *)
     type _ t =
       | File : string t
       | Values : 'a list -> 'a t
-      | Reentrant : (Command_line.Rich.t -> 'a list) -> 'a t
+      | Reentrant : (command_line -> 'a list) -> 'a t
       | Some : 'a t -> 'a option t
 
     let file = File
@@ -69,7 +73,7 @@ module Arg_parser = struct
     ;;
 
     let reentrant_thunk f =
-      let f (_ : Command_line.Rich.t) = f () in
+      let f _ = f () in
       Reentrant f
     ;;
 
@@ -183,7 +187,7 @@ module Arg_parser = struct
       |> List.rev
     in
     if List.length duplicate_names > 0
-    then raise Spec_error.(E (Duplicate_enum_names duplicate_names));
+    then Error.spec_error (Duplicate_enum_names duplicate_names);
     let parse s =
       let value_opt =
         List.find_map l ~f:(fun (name, value) ->
@@ -204,14 +208,30 @@ module Arg_parser = struct
       in
       match name with
       | Some name -> Format.pp_print_string ppf name
-      | None ->
-        raise Spec_error.(E (No_such_enum_value { valid_names = List.map l ~f:fst }))
+      | None -> Error.spec_error (No_such_enum_value { valid_names = List.map l ~f:fst })
     in
     { parse; print; default_value_name; completion = Some (Completion.values all_values) }
   ;;
 
   let string_enum ?(default_value_name = "VALUE") l =
     enum ~default_value_name (List.map l ~f:(fun s -> s, s)) ~eq:String.equal
+  ;;
+
+  let pair ?(sep = ',') a b =
+    let parse string =
+      match String.split_on_char ~sep string with
+      | [] | [ _ ] -> Error (`Msg "foo")
+      | x :: xs ->
+        let rest = String.concat ~sep:(String.make 1 sep) xs in
+        Result.bind (a.parse x) ~f:(fun ax ->
+          Result.map (b.parse rest) ~f:(fun bx -> ax, bx))
+    in
+    let print ppf (ax, bx) =
+      a.print ppf ax;
+      Format.pp_print_char ppf sep;
+      b.print ppf bx
+    in
+    { parse; print; default_value_name = "PAIR"; completion = None }
   ;;
 
   type 'a nonempty_list = 'a Nonempty_list.t = ( :: ) of ('a * 'a list)
@@ -244,7 +264,7 @@ module Arg_parser = struct
 
   let names_of_strings strings =
     match Nonempty_list.of_list strings with
-    | None -> raise Spec_error.(E Empty_name_list)
+    | None -> Error.spec_error Empty_name_list
     | Some strings -> Nonempty_list.map strings ~f:name_of_string_exn
   ;;
 
@@ -398,7 +418,7 @@ module Arg_parser = struct
     let i =
       match Nonnegative_int.of_int i with
       | Some _ -> i
-      | None -> raise Spec_error.(E (Negative_position i))
+      | None -> Error.spec_error (Negative_position i)
     in
     { arg_spec =
         Spec.create_positional
@@ -942,6 +962,15 @@ module Command = struct
       Printf.eprintf "%s" (Parse_error.to_string e);
       exit Parse_error.exit_code
     | Usage -> exit 0
+  ;;
+
+  let eval ?(eval_config = Eval_config.default) ?(program_name = `Argv0) t args =
+    let program =
+      match program_name with
+      | `Argv0 -> Sys.argv.(0)
+      | `Literal name -> name
+    in
+    eval ~eval_config t { Command_line.Raw.args; program }
   ;;
 end
 

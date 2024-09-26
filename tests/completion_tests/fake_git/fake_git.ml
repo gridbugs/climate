@@ -33,7 +33,7 @@ let checkout =
   let open Arg_parser in
   let+ _create_branch = flag [ "b" ]
   and+ _branch_name = pos_req 0 branch_conv
-  and+ _files = pos_right 1 file in
+  and+ _files = pos_right 0 file in
   ()
 ;;
 

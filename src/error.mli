@@ -53,3 +53,5 @@ module Spec_error : sig
 
   val to_string : t -> string
 end
+
+val spec_error : Spec_error.t -> _

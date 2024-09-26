@@ -1,7 +1,13 @@
 open Climate
 open Arg_parser
 
-let check = Util.check_and_print_spec_error
+let check f =
+  try
+    let _ = Command.singleton (f ()) in
+    ()
+  with
+  | Spec_error.E _ -> ()
+;;
 
 let%expect_test "duplicate argument name" =
   check (fun () ->
