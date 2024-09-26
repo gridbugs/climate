@@ -461,17 +461,17 @@ module Arg_parser = struct
     pos_left_gen i conv ~value_name ~required:false ~completion
   ;;
 
-  let pos_right ?value_name ?completion i conv =
+  let pos_right_inclusive ?value_name ?completion i_inclusive conv =
     { arg_spec =
         Spec.create_positional
           (Spec.Positional.all_above_inclusive
-             i
+             i_inclusive
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~completion:(conv_untyped_completion_opt_with_default conv completion))
     ; arg_compute =
         (fun context ->
           let _, right =
-            List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i
+            List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i_inclusive
           in
           List.mapi right ~f:(fun i x ->
             match conv.parse x with
@@ -481,7 +481,14 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_all ?value_name ?completion conv = pos_right ?value_name ?completion 0 conv
+  let pos_right ?value_name ?completion i_exclusive conv =
+    pos_right_inclusive ?value_name ?completion (i_exclusive + 1) conv
+  ;;
+
+  let pos_all ?value_name ?completion conv =
+    pos_right_inclusive ?value_name ?completion 0 conv
+  ;;
+
   let validate t = Spec.validate t.arg_spec
 
   let pp_help

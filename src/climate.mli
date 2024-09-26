@@ -171,7 +171,7 @@ module Arg_parser : sig
     -> 'a list t
 
   (** [pos_left i conv] parses all positional arguments at positions greater
-      than or equal to i. *)
+      than i. *)
   val pos_right
     :  ?value_name:string
     -> ?completion:'a Completion.t
