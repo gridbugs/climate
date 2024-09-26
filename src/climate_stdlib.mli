@@ -40,6 +40,7 @@ module List : sig
   val split_n : 'a t -> int -> 'a t * 'a t
   val is_empty : 'a t -> bool
   val filter_opt : 'a option t -> 'a t
+  val last : 'a t -> 'a option
 end
 
 module Map : sig

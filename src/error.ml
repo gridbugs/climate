@@ -23,7 +23,7 @@ module Parse_error = struct
     | Named_req_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Flag_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Conv_failed of
-        { locator : [ `Named of Name.t | `Positional of int ]
+        { locator : [ `Named of Name.t | `Positional of int ] option
         ; message : string
         }
     | Too_many_positional_arguments of { max : int }
@@ -80,12 +80,15 @@ module Parse_error = struct
         (names_to_string_hum names)
         n
     | Conv_failed { locator; message } ->
-      let locator_string =
-        match locator with
-        | `Named name -> sprintf "the argument to %S" (Name.to_string_with_dashes name)
-        | `Positional i -> sprintf "the argument at position %d" i
-      in
-      sprintf "Failed to parse %s: %s" locator_string message
+      (match locator with
+       | Some (`Named name) ->
+         sprintf
+           "Failed to parse the argument to %S: %s"
+           (Name.to_string_with_dashes name)
+           message
+       | Some (`Positional i) ->
+         sprintf "Failed to parse the argument at position %d: %s" i message
+       | None -> sprintf "Failed to parse the argument: %s" message)
     | Too_many_positional_arguments { max } ->
       sprintf
         "Too many positional arguments. At most %d positional arguments may be passed."

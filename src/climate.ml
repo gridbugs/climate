@@ -289,6 +289,16 @@ module Arg_parser = struct
     { arg_spec = Spec.empty; arg_compute = (fun context -> context.command_line.program) }
   ;;
 
+  let last t =
+    let+ list = t in
+    match List.last list with
+    | None ->
+      raise
+        Parse_error.(
+          E (Conv_failed { locator = None; message = "Unexpected empty list" }))
+    | Some x -> x
+  ;;
+
   let named_multi_gen info conv =
     { arg_spec = Spec.create_named info
     ; arg_compute =
@@ -298,7 +308,8 @@ module Arg_parser = struct
             match conv.parse value with
             | Ok value -> value
             | Error (`Msg message) ->
-              raise Parse_error.(E (Conv_failed { locator = `Named name; message }))))
+              raise
+                Parse_error.(E (Conv_failed { locator = Some (`Named name); message }))))
     }
   ;;
 
@@ -448,7 +459,8 @@ module Arg_parser = struct
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise
+                Parse_error.(E (Conv_failed { locator = Some (`Positional i); message }))))
     }
   ;;
 
@@ -487,7 +499,8 @@ module Arg_parser = struct
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise
+                Parse_error.(E (Conv_failed { locator = Some (`Positional i); message }))))
     }
   ;;
 
@@ -511,7 +524,8 @@ module Arg_parser = struct
             match conv.parse x with
             | Ok x -> x
             | Error (`Msg message) ->
-              raise Parse_error.(E (Conv_failed { locator = `Positional i; message }))))
+              raise
+                Parse_error.(E (Conv_failed { locator = Some (`Positional i); message }))))
     }
   ;;
 

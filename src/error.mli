@@ -17,7 +17,7 @@ module Parse_error : sig
     | Named_req_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Flag_appeared_multiple_times of (Name.t Nonempty_list.t * int)
     | Conv_failed of
-        { locator : [ `Named of Name.t | `Positional of int ]
+        { locator : [ `Named of Name.t | `Positional of int ] option
         ; message : string
         }
     | Too_many_positional_arguments of { max : int }

@@ -254,12 +254,7 @@ module Arg = struct
     | xs -> xs
   ;;
 
-  let last t =
-    let open Climate.Arg_parser in
-    let+ xs = t in
-    List.hd (List.rev xs)
-  ;;
-
+  let last = Climate.Arg_parser.last
   let man_format = Term.const `Auto
 
   let pair ?(sep = ',') a b =

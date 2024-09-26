@@ -74,6 +74,12 @@ module List = struct
   ;;
 
   let filter_opt t = filter_map t ~f:Fun.id
+
+  let rec last = function
+    | [] -> None
+    | [ x ] -> Some x
+    | _ :: xs -> last xs
+  ;;
 end
 
 module Map = struct

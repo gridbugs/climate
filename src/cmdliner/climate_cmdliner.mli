@@ -17,11 +17,14 @@ module Manpage : sig
   val s_synopsis : string
   val s_description : string
   val s_commands : string
+  val s_command_aliases : string
   val s_arguments : string
   val s_options : string
   val s_common_options : string
   val s_exit_status : string
+  val s_exit_status_intro : block
   val s_environment : string
+  val s_environment_intro : block
   val s_files : string
   val s_bugs : string
   val s_examples : string

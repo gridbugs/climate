@@ -93,6 +93,11 @@ module Arg_parser : sig
       command line. *)
   val argv0 : string t
 
+  (** Takes a parser of a list and returns a parser that yields the
+      last element of the list. Raises a [Parse_error.E] if the list
+      is empty. *)
+  val last : 'a list t -> 'a t
+
   (** A named argument that may appear multiple times on the command line. *)
   val named_multi
     :  ?desc:string
