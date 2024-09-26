@@ -1,5 +1,6 @@
 (library
  (name climate_usage_tests)
+ (package climate_tests)
  (inline_tests)
  (preprocess
   (pps ppx_inline_test ppx_expect))

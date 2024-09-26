@@ -1,6 +1,6 @@
 (executable
  (public_name fake_git)
- (package climate)
+ (package climate_tests)
  (libraries climate unix))
 
 (cram

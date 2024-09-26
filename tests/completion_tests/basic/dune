@@ -1,6 +1,6 @@
 (executable
  (public_name basic)
- (package climate)
+ (package climate_tests)
  (libraries climate))
 
 (cram

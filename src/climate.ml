@@ -50,8 +50,7 @@ module Arg_parser = struct
   type 'a print = Format.formatter -> 'a -> unit
 
   module Completion = struct
-    (* Roughly duplicated from [Spec.Untyped_completion.t] bu
-       t
+    (* Roughly duplicated from [Spec.Untyped_completion.t] but
        with types that correspond to the type of the [conv] it will be
        part of. *)
     type _ t =
