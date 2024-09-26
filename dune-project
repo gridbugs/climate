@@ -4,6 +4,8 @@
 
 (cram enable)
 
+(name climate)
+
 (package
  (name climate)
  (depends ocaml dune))
