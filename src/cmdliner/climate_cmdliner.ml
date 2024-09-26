@@ -1,5 +1,12 @@
 open StdLabels
 
+let exit_on_parse_error f =
+  try f () with
+  | Climate.Spec_error.E e ->
+    Printf.eprintf "%s" (Climate.Spec_error.to_string e);
+    exit 1
+;;
+
 module Manpage = struct
   type block =
     [ `S of string
@@ -50,8 +57,8 @@ module Term = struct
   type 'a t = 'a Climate.Arg_parser.t
 
   let const = Climate.Arg_parser.const
-  let app = Climate.Arg_parser.apply
-  let ( $ ) = Climate.Arg_parser.apply
+  let app f x = exit_on_parse_error (fun () -> Climate.Arg_parser.apply f x)
+  let ( $ ) = app
 
   type 'a ret =
     [ `Ok of 'a
@@ -97,7 +104,9 @@ module Cmd = struct
   let name (t : _ t) = t.name
 
   let v info term =
-    let command = Climate.Command.singleton ?desc:info.doc term in
+    let command =
+      exit_on_parse_error (fun () -> Climate.Command.singleton ?desc:info.doc term)
+    in
     { name = info.name; command }
   ;;
 
@@ -264,8 +273,8 @@ module Arg = struct
   let man_format = Term.const `Auto
 
   let pair ?(sep = ',') (pa0, pr0) (pa1, pr1) =
-    let parser _ = failwith "todo" in
-    let printer _ _ = failwith "todo" in
+    let parser _ = failwith "todo parser" in
+    let printer _ _ = failwith "todo printer" in
     parser, printer
   ;;
 
