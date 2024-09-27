@@ -73,5 +73,6 @@ let%expect_test "parsing a list containing a parse error" =
     List.iter print_int xs
   in
   run Command.(singleton parser) [ "1,two,3" ];
-  [%expect {| Failed to parse the argument at position 0: invalid value: "two" (not an int) |}]
+  [%expect
+    {| Failed to parse the argument at position 0: invalid value: "two" (not an int) |}]
 ;;

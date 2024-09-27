@@ -80,5 +80,6 @@ let%expect_test "parsing a pair containing a parse error" =
     Printf.printf "%d %b" i b
   in
   run Command.(singleton parser) [ "42,foo" ];
-  [%expect {| Failed to parse the argument at position 0: invalid value: "foo" (not an bool) |}]
+  [%expect
+    {| Failed to parse the argument at position 0: invalid value: "foo" (not an bool) |}]
 ;;
