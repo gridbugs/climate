@@ -112,6 +112,10 @@ module Cmd = struct
     { name = info.name; command }
   ;;
 
+  let print_completion_script_bash name =
+    { name; command = Climate.Command.print_completion_script_bash }
+  ;;
+
   let eval_value ?catch:_ { command; _ } = Ok (Climate.Command.run command)
 end
 

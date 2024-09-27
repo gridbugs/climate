@@ -90,6 +90,7 @@ module Cmd : sig
   val name : _ t -> string
   val v : info -> 'a Term.t -> 'a t
   val group : ?default:'a Term.t -> info -> 'a t list -> 'a t
+  val print_completion_script_bash : string -> _ t
   val eval_value : ?catch:_ -> 'a t -> ('a, _) result
 end
 
