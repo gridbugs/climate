@@ -103,7 +103,7 @@ Test that positional arguments and subcommands are both listed.
 
 Test the behaviour of arguments with no hints.
   $ x "fake-git commit --message " \
-  >   "                          ^"
+  >   "                          ^" | sort
   .git
   completion.sh
   fake_git.exe
