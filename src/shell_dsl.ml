@@ -44,7 +44,7 @@ and if_ =
   }
 
 and case_pattern =
-  { pattern : string
+  { pattern : string Nonempty_list.t
   ; case_body : stmt list
   }
 
@@ -136,6 +136,11 @@ module Stmt = struct
     in
     If { if_ = { cond; body }; elifs; else_ }
   ;;
+
+  type patterns = string Nonempty_list.t
+
+  let pattern = Nonempty_list.singleton
+  let patterns = Fun.id
 
   let case value patterns =
     let patterns =
@@ -248,7 +253,8 @@ module Bash = struct
        ; text = sprintf "case %s in" (value_to_string ~global_symbol_prefix value)
        }
        :: List.concat_map patterns ~f:(fun { pattern; case_body } ->
-         ({ indent = indent + 1; text = sprintf "%s)" pattern }
+         let pattern_string = String.concat ~sep:" | " (Nonempty_list.to_list pattern) in
+         ({ indent = indent + 1; text = sprintf "%s)" pattern_string }
           :: List.concat_map
                case_body
                ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 2)))

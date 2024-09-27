@@ -61,7 +61,12 @@ module Stmt : sig
     -> t
 
   val if_ : ?elifs:(Cond.t * t list) list -> ?else_:t list -> Cond.t -> t list -> t
-  val case : Value.t -> (string * t list) list -> t
+
+  type patterns
+
+  val pattern : string -> patterns
+  val patterns : string Nonempty_list.t -> patterns
+  val case : Value.t -> (patterns * t list) list -> t
   val while_ : Cond.t -> t list -> t
   val return : Value.t -> t
   val comment : string -> t

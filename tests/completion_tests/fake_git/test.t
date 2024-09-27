@@ -11,6 +11,7 @@ Make a fake .git directory with some branches.
   checkout
   log
   bisect
+  commit
 
   $ x "fake-git checkout " \
   >   "                  ^"
@@ -99,3 +100,10 @@ Test that positional arguments and subcommands are both listed.
   >   "                      ^"
   --help
   -h
+
+Test the behaviour of arguments with no hints.
+  $ x "fake-git commit --message " \
+  >   "                          ^"
+  .git
+  completion.sh
+  fake_git.exe

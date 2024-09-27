@@ -119,6 +119,8 @@ end
 module Nonempty_list = struct
   type 'a t = ( :: ) of ('a * 'a list)
 
+  let singleton x = [ x ]
+
   let of_list = function
     | [] -> None
     | x :: xs -> Some (x :: xs)

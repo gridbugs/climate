@@ -57,6 +57,13 @@ let bisect op =
   | `Start | `Reset -> unit
 ;;
 
+(* A command with an argument that has no completino hints *)
+let commit =
+  let open Arg_parser in
+  let+ _message = named_opt [ "message" ] string in
+  ()
+;;
+
 let () =
   let open Command in
   group
@@ -68,6 +75,7 @@ let () =
            [ subcommand "start" (singleton (bisect `Start))
            ; subcommand "reset" (singleton (bisect `Reset))
            ]
+    ; subcommand "commit" (singleton commit)
     ; subcommand "completions" ~hidden:true print_completion_script_bash
     ]
   |> run
