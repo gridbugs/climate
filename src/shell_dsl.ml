@@ -1,6 +1,6 @@
 open! Import
 
-type global_name = global_symbol_prefix:string -> string
+type global_name = { suffix : string }
 
 type global_value =
   | Global_variable of { initial_value : string }
@@ -23,7 +23,6 @@ and string_with_global_name =
 
 and value =
   | Literal of string
-  | Literal_with_global_name of string_with_global_name
   | Global of global_named_value
 
 and cond =
@@ -65,28 +64,43 @@ and stmt =
 module Global_name = struct
   type t = global_name
 
-  let with_prefix name ~global_symbol_prefix = String.cat global_symbol_prefix name
+  let make suffix = { suffix }
+
+  let with_prefix ~global_symbol_prefix { suffix } =
+    String.cat global_symbol_prefix suffix
+  ;;
+
+  let suffix t = t.suffix
+  let with_suffix t ~f = { suffix = f t.suffix }
 end
 
 module Global_named_value = struct
   type t = global_named_value
 
   let name t = t.name
-  let global_name_with_prefix ~global_symbol_prefix t = t.name ~global_symbol_prefix
+  let with_suffix t ~f = { t with name = Global_name.with_suffix t.name ~f }
+
+  let global_name_with_prefix ~global_symbol_prefix t =
+    Global_name.with_prefix t.name ~global_symbol_prefix
+  ;;
 
   let string_with_global_name_to_string
     ~global_symbol_prefix
     { string_of_name; global_name }
     =
-    string_of_name (global_name ~global_symbol_prefix)
+    string_of_name (Global_name.with_prefix ~global_symbol_prefix global_name)
   ;;
 
   let global_variable ~name ~initial_value =
-    { name = Global_name.with_prefix name; value = Global_variable { initial_value } }
+    { name = Global_name.make name; value = Global_variable { initial_value } }
   ;;
 
-  let function_ name body =
-    { name = Global_name.with_prefix name; value = Function { body } }
+  let function_ name body = { name = Global_name.make name; value = Function { body } }
+
+  let with_function_stmts ({ value; _ } as t) ~f =
+    match value with
+    | Global_variable _ -> t
+    | Function { body } -> { t with value = Function { body = f body } }
   ;;
 end
 
@@ -94,12 +108,13 @@ module Value = struct
   type t = value
 
   let literal s = Literal s
-
-  let literal_with_global_name ~f global_name =
-    Literal_with_global_name { string_of_name = f; global_name }
-  ;;
-
   let global global_named_value = Global global_named_value
+
+  let map_global_name_suffix t ~f =
+    match t with
+    | Global g -> Global (Global_named_value.with_suffix g ~f)
+    | _ -> t
+  ;;
 end
 
 module Cond = struct
@@ -111,6 +126,18 @@ module Cond = struct
 
   let test_raw_of_string_with_global_name ~f global_name =
     Test_raw_cond_of_string_with_global_name { string_of_name = f; global_name }
+  ;;
+
+  let map_global_name_suffix t ~f =
+    match t with
+    | Call { function_; args } ->
+      let function_ = Global_named_value.with_suffix function_ ~f in
+      let args = List.map args ~f:(Value.map_global_name_suffix ~f) in
+      Call { function_; args }
+    | Test_raw_cond_of_string_with_global_name { string_of_name; global_name } ->
+      Test_raw_cond_of_string_with_global_name
+        { string_of_name; global_name = Global_name.with_suffix global_name ~f }
+    | _ -> t
   ;;
 end
 
@@ -153,18 +180,93 @@ module Stmt = struct
   let return s = Return s
   let comment s = Comment s
   let noop = Noop
+
+  let is_comment = function
+    | Comment _ -> true
+    | _ -> false
+  ;;
+
+  let map_global_name_suffix_single_stmt t ~f =
+    match t with
+    | Raw_with_global_name { string_of_name; global_name } ->
+      Raw_with_global_name
+        { string_of_name; global_name = Global_name.with_suffix global_name ~f }
+    | Cond cond -> Cond (Cond.map_global_name_suffix cond ~f)
+    | If { if_ = { cond; body }; elifs; else_ } ->
+      let cond = Cond.map_global_name_suffix cond ~f in
+      let elifs =
+        List.map elifs ~f:(fun { cond; body } ->
+          let cond = Cond.map_global_name_suffix cond ~f in
+          { cond; body })
+      in
+      If { if_ = { cond; body }; elifs; else_ }
+    | While { cond; body } ->
+      let cond = Cond.map_global_name_suffix cond ~f in
+      While { cond; body }
+    | Case { value; patterns } ->
+      Case { value = Value.map_global_name_suffix value ~f; patterns }
+    | Return value -> Return (Value.map_global_name_suffix value ~f)
+    | _ -> t
+  ;;
+
+  let fold_blocks_top_down ts ~init ~f =
+    let rec loop ts acc =
+      let ts, acc = f ts acc in
+      let rev_ts, acc =
+        List.fold_left ts ~init:([], acc) ~f:(fun (rev_ts, acc) t ->
+          let t, acc = single t acc in
+          t :: rev_ts, acc)
+      in
+      List.rev rev_ts, acc
+    and single t acc =
+      match t with
+      | Raw _ | Raw_with_global_name _ | Cond _ | Return _ | Comment _ | Noop -> t, acc
+      | If { if_ = { cond; body }; elifs; else_ } ->
+        let body, acc = loop body acc in
+        let rev_elifs, acc =
+          List.fold_left elifs ~init:([], acc) ~f:(fun (rev_elifs, acc) { cond; body } ->
+            let body, acc = loop body acc in
+            { cond; body } :: rev_elifs, acc)
+        in
+        let elifs = List.rev rev_elifs in
+        let else_, acc =
+          match else_ with
+          | None -> None, acc
+          | Some else_ ->
+            let else_, acc = loop else_ acc in
+            Some else_, acc
+        in
+        If { if_ = { cond; body }; elifs; else_ }, acc
+      | Case { value; patterns } ->
+        let rev_patterns, acc =
+          List.fold_left
+            patterns
+            ~init:([], acc)
+            ~f:(fun (rev_patterns, acc) { pattern; case_body } ->
+              let case_body, acc = loop case_body acc in
+              { pattern; case_body } :: rev_patterns, acc)
+        in
+        let patterns = List.rev rev_patterns in
+        Case { value; patterns }, acc
+      | While { cond; body } ->
+        let body, acc = loop body acc in
+        While { cond; body }, acc
+    in
+    loop ts init
+  ;;
+
+  let transform_blocks_top_down ts ~f =
+    fst @@ fold_blocks_top_down ts ~init:() ~f:(fun ts () -> f ts, ())
+  ;;
+
+  let map_global_name_suffix ts ~f =
+    transform_blocks_top_down ts ~f:(List.map ~f:(map_global_name_suffix_single_stmt ~f))
+  ;;
 end
 
 module Bash = struct
   let rec value_to_string ~global_symbol_prefix = function
     | Literal s -> sprintf "\"%s\"" s
-    | Literal_with_global_name string_with_global_name ->
-      let s =
-        Global_named_value.string_with_global_name_to_string
-          ~global_symbol_prefix
-          string_with_global_name
-      in
-      sprintf "\"%s\"" s
     | Global global_named_value ->
       sprintf
         "\"$%s\""
@@ -295,10 +397,10 @@ module Bash = struct
   let global_named_value_to_lines ~global_symbol_prefix { name; value } =
     match value with
     | Global_variable { initial_value } ->
-      let name = name ~global_symbol_prefix in
+      let name = Global_name.with_prefix name ~global_symbol_prefix in
       [ { indent = 0; text = sprintf "%s=%s" name initial_value } ]
     | Function { body } ->
-      let name = name ~global_symbol_prefix in
+      let name = Global_name.with_prefix name ~global_symbol_prefix in
       let body =
         if List.is_empty (remove_comments body)
         then

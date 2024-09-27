@@ -20,7 +20,8 @@ module Global_name : sig
       bash script so as to not conflict with other global names *)
   type t
 
-  val with_prefix : string -> t
+  val make : string -> t
+  val suffix : t -> string
 end
 
 module Global_named_value : sig
@@ -29,13 +30,18 @@ module Global_named_value : sig
   val name : t -> Global_name.t
   val global_variable : name:string -> initial_value:string -> t
   val function_ : string -> stmt list -> t
+
+  (** Transform the statements within t if t is a function *)
+  val with_function_stmts : t -> f:(stmt list -> stmt list) -> t
+
+  (** Transform the suffix of the name of the value *)
+  val with_suffix : t -> f:(string -> string) -> t
 end
 
 module Value : sig
   type t
 
   val literal : string -> t
-  val literal_with_global_name : f:(string -> string) -> Global_name.t -> t
   val global : Global_named_value.t -> t
 end
 
@@ -70,7 +76,14 @@ module Stmt : sig
   val while_ : Cond.t -> t list -> t
   val return : Value.t -> t
   val comment : string -> t
+  val is_comment : t -> bool
   val noop : t
+
+  (** Call a given function on all blocks appearing within the statement. *)
+  val transform_blocks_top_down : t list -> f:(t list -> t list) -> t list
+
+  (** Rename the suffix of all global names referenced within a block of statements *)
+  val map_global_name_suffix : t list -> f:(string -> string) -> t list
 end
 
 module Bash : sig

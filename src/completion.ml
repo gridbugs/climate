@@ -1,6 +1,18 @@
 open! Import
 open Shell_dsl
 
+module Options = struct
+  type t =
+    { no_comments : bool
+    ; minify_global_names : bool
+    ; no_whitespace : bool
+    }
+
+  let default =
+    { no_comments = false; minify_global_names = false; no_whitespace = false }
+  ;;
+end
+
 module Status = struct
   open Global_named_value
 
@@ -309,7 +321,7 @@ module Subcommand_and_positional_arg_completion = struct
                  ~f:(fun (subcommand : _ Completion_spec.subcommand) ->
                    let subcommand_path = subcommand.name :: subcommand_path in
                    let completion_function_name =
-                     Global_name.with_prefix
+                     Global_name.make
                        (function_name ~subcommand_path ~command_hash_in_function_names)
                    in
                    let stmts =
@@ -328,7 +340,7 @@ module Subcommand_and_positional_arg_completion = struct
                  then
                    Option.map named_arg.hint ~f:(fun _hint ->
                      let completion_function_name =
-                       Global_name.with_prefix
+                       Global_name.make
                          (Named_arg_value_completion.function_name
                             ~named_arg
                             ~subcommand_path
@@ -479,10 +491,10 @@ end
 module Completion_entry_point = struct
   open Global_named_value
 
-  let function_ ~program_name ~command_hash_in_function_names =
+  let function_ ~command_hash_in_function_names =
     let open Stmt in
     let completion_root_name =
-      Global_name.with_prefix
+      Global_name.make
         (Subcommand_and_positional_arg_completion.function_name
            ~subcommand_path:[]
            ~command_hash_in_function_names)
@@ -513,28 +525,6 @@ module Completion_entry_point = struct
                          first word after the program name, which is expected to be the \
                          empty string if no additional words have been entered after the \
                          program name."
-                    ]
-                ] )
-            ; ( Cond.test_raw_of_string_with_global_name
-                  ~f:(fun comp_words_traverse_get_current ->
-                    sprintf
-                      "\"$(%s)\" != \"%s\""
-                      comp_words_traverse_get_current
-                      program_name)
-                  (name Comp_words.Traverse.get_current)
-              , [ call
-                    Error.print
-                    [ Value.literal_with_global_name
-                        ~f:(fun comp_words_traverse_get_current ->
-                          sprintf
-                            "Completion script found unexpected first word of command \
-                             line: '$(%s)'. This is the completion script for the \
-                             program '%s' and so it's expected that the first word of \
-                             the command line will be '%s'."
-                            comp_words_traverse_get_current
-                            program_name
-                            program_name)
-                        (name Comp_words.Traverse.get_current)
                     ]
                 ] )
             ]
@@ -631,6 +621,82 @@ let make_random_prefix () =
   sprintf "__climate_complete_%d__" (Random.int32 Int32.max_int |> Int32.to_int)
 ;;
 
+module Short_symbol = struct
+  type t = int list
+
+  let initial : t = [ 0 ]
+
+  let allowed_chars =
+    ('_' :: List.init ~len:26 ~f:(fun i -> Char.chr (Char.code 'a' + i)))
+    @ List.init ~len:26 ~f:(fun i -> Char.chr (Char.code 'A' + i))
+    |> Array.of_list
+  ;;
+
+  let num_allowed_chars = Array.length allowed_chars
+
+  let rec next = function
+    | [] -> [ 1 ]
+    | x :: xs ->
+      let x = x + 1 in
+      if Int.equal x num_allowed_chars then 0 :: next xs else x :: xs
+  ;;
+
+  let to_string t =
+    String.init (List.length t) ~f:(fun i -> Array.get allowed_chars (List.nth t i))
+  ;;
+end
+
+let post_process_globals { Options.no_comments; minify_global_names; _ } globals =
+  let globals =
+    if no_comments
+    then
+      List.map
+        globals
+        ~f:
+          (Global_named_value.with_function_stmts
+             ~f:
+               (Stmt.transform_blocks_top_down
+                  ~f:(List.filter ~f:(Fun.negate Stmt.is_comment))))
+    else globals
+  in
+  let globals =
+    if minify_global_names
+    then (
+      let short_symbol_table =
+        let all_global_name_suffixes =
+          List.map globals ~f:(fun global_named_value ->
+            Global_named_value.name global_named_value |> Global_name.suffix)
+        in
+        List.fold_left
+          all_global_name_suffixes
+          ~init:(Short_symbol.initial, [])
+          ~f:(fun (current, acc) suffix ->
+            let next = Short_symbol.next current in
+            next, (suffix, Short_symbol.to_string current) :: acc)
+        |> snd
+        |> List.rev
+        |> List.tl
+        |> String.Map.of_list
+        |> Result.get_ok
+      in
+      let transform_suffix suffix =
+        match String.Map.find short_symbol_table suffix with
+        | None -> suffix
+        | Some suffix -> suffix
+      in
+      List.map globals ~f:(fun global ->
+        let global = Global_named_value.with_suffix global ~f:transform_suffix in
+        let global =
+          Global_named_value.with_function_stmts
+            global
+            ~f:(Stmt.map_global_name_suffix ~f:transform_suffix)
+        in
+        global))
+    else globals
+  in
+  globals
+;;
+
 (* Generate a bash completion script, expected to be sourced in a
    shell to enable tab completion according to a provided spec. The
    script defines a completion function which is registered with the
@@ -659,50 +725,50 @@ let generate_bash
   ~print_reentrant_completions_name
   ~global_symbol_prefix
   ~command_hash_in_function_names
+  ~(options : Options.t)
   =
   let spec = Completion_spec.replace_reentrants_with_indices spec in
-  let reentrant_query_run =
-    let program_exe =
-      match program_exe_for_reentrant_query with
-      | `Program_name -> program_name
-      | `Other program_exe -> program_exe
+  let all_functions =
+    let entry_point = Completion_entry_point.function_ ~command_hash_in_function_names in
+    let reentrant_query_run =
+      let program_exe =
+        match program_exe_for_reentrant_query with
+        | `Program_name -> program_name
+        | `Other program_exe -> program_exe
+      in
+      Reentrant_query.run ~program_exe ~print_reentrant_completions_name
     in
-    Reentrant_query.run ~program_exe ~print_reentrant_completions_name
+    let static_global_values =
+      Status.all_global_values
+      @ Error.all_global_values
+      @ Comp_words.all_global_values
+      @ Add_reply.all_global_values
+      @ [ reentrant_query_run ]
+    in
+    let completion_functions =
+      functions_of_spec
+        spec
+        ~subcommand_path:[]
+        ~reentrant_query_run
+        ~command_hash_in_function_names
+    in
+    post_process_globals
+      options
+      (entry_point :: (static_global_values @ completion_functions))
   in
-  let static_global_values =
-    Status.all_global_values
-    @ Error.all_global_values
-    @ Comp_words.all_global_values
-    @ Add_reply.all_global_values
-    @ [ reentrant_query_run ]
-  in
-  let completion_functions =
-    functions_of_spec
-      spec
-      ~subcommand_path:[]
-      ~reentrant_query_run
-      ~command_hash_in_function_names
-  in
-  let all_functions = static_global_values @ completion_functions in
   let global_symbol_prefix =
     match global_symbol_prefix with
     | `Random -> make_random_prefix ()
     | `Custom s -> s
   in
-  let header = bash_header ~program_name ~global_symbol_prefix in
-  let globals =
-    List.map all_functions ~f:(Bash.global_named_value_to_string ~global_symbol_prefix)
-  in
-  let entry_point =
-    Completion_entry_point.function_ ~program_name ~command_hash_in_function_names
-    |> Bash.global_named_value_to_string ~global_symbol_prefix
-  in
-  let last_line =
-    Stmt.raw_with_global_name
-      (Global_named_value.name
-         (Completion_entry_point.function_ ~program_name ~command_hash_in_function_names))
-      ~f:(fun complete_entry -> sprintf "complete -F %s %s" complete_entry program_name)
-    |> Bash.stmt_to_string ~global_symbol_prefix
-  in
-  (header :: globals) @ [ entry_point; last_line ] |> String.concat ~sep:"\n\n"
+  String.concat
+    ~sep:(if options.no_whitespace then "\n" else "\n\n")
+    ([ bash_header ~program_name ~global_symbol_prefix ]
+     @ List.map all_functions ~f:(Bash.global_named_value_to_string ~global_symbol_prefix)
+     @ [ Stmt.raw_with_global_name
+           (Global_named_value.name (List.hd all_functions))
+           ~f:(fun complete_entry ->
+             sprintf "complete -F %s %s" complete_entry program_name)
+         |> Bash.stmt_to_string ~global_symbol_prefix
+       ])
 ;;

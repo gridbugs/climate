@@ -864,6 +864,7 @@ module Command = struct
          ~program_exe_for_reentrant_query
          ~global_symbol_prefix
          ~command_hash_in_function_names
+         ~options:Completion.Options.default
   ;;
 
   module Reentrant_query = struct
@@ -980,7 +981,8 @@ module Command = struct
            ~program_exe_for_reentrant_query
            ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
            ~global_symbol_prefix
-           ~command_hash_in_function_names);
+           ~command_hash_in_function_names
+           ~options:Completion.Options.default);
       exit 0
   ;;
 

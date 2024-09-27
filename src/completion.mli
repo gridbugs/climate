@@ -1,5 +1,15 @@
 open! Import
 
+module Options : sig
+  type t =
+    { no_comments : bool
+    ; minify_global_names : bool
+    ; no_whitespace : bool
+    }
+
+  val default : t
+end
+
 (** Returns a bash script that can be sourced in a shell to register
     completions for the described completion spec.
 
@@ -33,4 +43,5 @@ val generate_bash
   -> print_reentrant_completions_name:Name.t
   -> global_symbol_prefix:[ `Random | `Custom of string ]
   -> command_hash_in_function_names:bool
+  -> options:Options.t
   -> string
