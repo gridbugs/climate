@@ -355,10 +355,10 @@ module Subcommand_and_positional_arg_completion = struct
                        ; raw_with_global_name
                            ~f:(sprintf "%s \"$2\"")
                            completion_function_name
-                       ; raw "status=$?"
+                       ; raw "status_=$?"
                        ; if_
-                           (Cond.test_raw "\"$status\" -ne 0")
-                           [ return (Value.literal "$status") ]
+                           (Cond.test_raw "\"$status_\" -ne 0")
+                           [ return (Value.literal "$status_") ]
                        ; raw "prev_word_was_named_argument_with_value=1"
                        ]
                      in
@@ -464,14 +464,17 @@ module Subcommand_and_positional_arg_completion = struct
                      ; return (Value.global Status.done_)
                      ]
                      ~else_:
-                       [ raw "local current_word status"
+                       [ comment
+                           "Avoid the variable name \"status\" as it's reserved by some \
+                            shells."
+                       ; raw "local current_word status_"
                        ; raw_with_global_name
                            ~f:(sprintf "current_word=$(%s)")
                            (name Comp_words.Traverse.get_current)
-                       ; raw "status=$?"
+                       ; raw "status_=$?"
                        ; if_
-                           (Cond.test_raw "\"$status\" -ne 0")
-                           [ return (Value.literal "$status") ]
+                           (Cond.test_raw "\"$status_\" -ne 0")
+                           [ return (Value.literal "$status_") ]
                        ; call Comp_words.Traverse.advance []
                        ; if_
                            (Cond.call Comp_words.Traverse.is_past_cursor [])
