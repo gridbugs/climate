@@ -47,6 +47,8 @@ module Arg_parser = struct
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
+  let to_string_print to_string fmt value = Format.pp_print_string fmt (to_string value)
+
   module Completion = struct
     type command_line = Command_line.Rich.t =
       { program : string
@@ -86,6 +88,10 @@ module Arg_parser = struct
     ; default_value_name : string
     ; completion : 'a Completion.t option
     }
+
+  let make_conv ~parse ~print ?(default_value_name = "VALUE") ?(completion = None) () =
+    { parse; print; default_value_name; completion }
+  ;;
 
   let value_to_string print value =
     print Format.str_formatter value;
@@ -172,7 +178,7 @@ module Arg_parser = struct
     { string with default_value_name = "FILE"; completion = Some Completion.file }
   ;;
 
-  let enum ?(default_value_name = "VALUE") l ~eq =
+  let enum ?(default_value_name = "VALUE") ?(eq = ( = )) l =
     let all_names = List.map l ~f:fst in
     let all_values = List.map l ~f:snd in
     let duplicate_names =
@@ -854,9 +860,14 @@ module Command = struct
     ?(program_exe_for_reentrant_query = `Program_name)
     ?(global_symbol_prefix = `Random)
     ?(command_hash_in_function_names = true)
+    ?(program_name = `Argv0)
     t
-    ~program_name
     =
+    let program_name =
+      match program_name with
+      | `Argv0 -> Sys.argv.(0)
+      | `Literal name -> name
+    in
     completion_spec t
     |> Completion.generate_bash
          ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
@@ -992,6 +1003,10 @@ module Command = struct
       Printf.eprintf "%s" (Parse_error.to_string e);
       exit Parse_error.exit_code
     | Usage -> exit 0
+  ;;
+
+  let run_singleton ?(eval_config = Eval_config.default) ?desc arg_parser =
+    run ~eval_config (singleton ?desc arg_parser)
   ;;
 
   let eval ?(eval_config = Eval_config.default) ?(program_name = `Argv0) t args =

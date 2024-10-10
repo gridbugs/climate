@@ -32,3 +32,8 @@
  (names fib)
  (libraries climate)
  (modules fib))
+
+(executables
+ (names echo_ansi)
+ (libraries climate)
+ (modules echo_ansi))

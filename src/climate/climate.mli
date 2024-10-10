@@ -6,6 +6,9 @@ module Arg_parser : sig
   type 'a parse = string -> ('a, [ `Msg of string ]) result
   type 'a print = Format.formatter -> 'a -> unit
 
+  (** Make a ['a print] value from a to_string function *)
+  val to_string_print : ('a -> string) -> 'a print
+
   module Completion : sig
     type 'a parser := 'a t
     type 'a t
@@ -40,6 +43,15 @@ module Arg_parser : sig
     ; completion : 'a Completion.t option
     }
 
+  (** Helper function for constructing ['_ conv]s *)
+  val make_conv
+    :  parse:'a parse
+    -> print:'a print
+    -> ?default_value_name:string
+    -> ?completion:'a Completion.t option
+    -> unit
+    -> 'a conv
+
   val string : string conv
   val int : int conv
   val float : float conv
@@ -55,8 +67,8 @@ module Arg_parser : sig
       name. *)
   val enum
     :  ?default_value_name:string
+    -> ?eq:('a -> 'a -> bool)
     -> (string * 'a) list
-    -> eq:('a -> 'a -> bool)
     -> 'a conv
 
   (** [string_enum values ~eq] returns a conv for a concrete set of possible
@@ -187,7 +199,7 @@ module Arg_parser : sig
     -> 'a conv
     -> 'a list t
 
-  (** [pos_left i conv] parses all positional arguments at positions greater
+  (** [pos_right i conv] parses all positional arguments at positions greater
       than i. *)
   val pos_right
     :  ?value_name:string
@@ -302,8 +314,8 @@ module Command : sig
     -> ?program_exe_for_reentrant_query:[ `Program_name | `Other of string ]
     -> ?global_symbol_prefix:[ `Random | `Custom of string ]
     -> ?command_hash_in_function_names:bool
+    -> ?program_name:[ `Argv0 | `Literal of string ]
     -> _ t
-    -> program_name:string
     -> string
 
   (** Run the command on given arguments. Raises a [Parse_error.E] if
@@ -320,6 +332,9 @@ module Command : sig
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)
   val run : ?eval_config:Eval_config.t -> 'a t -> 'a
+
+  (** [run_singleton arg_parser] is a shorthand for [run (singleton arg_parser)] *)
+  val run_singleton : ?eval_config:Eval_config.t -> ?desc:string -> 'a Arg_parser.t -> 'a
 end
 
 module Parse_error : sig

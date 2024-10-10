@@ -1,7 +1,5 @@
-(** A wrapper of climate that copies a subset of cmdliner's api
-    allowing climate to be used as a drop-in replacement for cmdliner,
-    mostly for the purpose of testing climate in real-world programs such
-    as dune. *)
+(** Implements a subset of cmdliner's interface using climate so programs
+    written with cmdliner can gradually adopt climate. *)
 
 module Manpage : sig
   type block =

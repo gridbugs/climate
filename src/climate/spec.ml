@@ -306,7 +306,7 @@ let usage ppf { named; positional } =
   Positional.all_required_value_names positional
   |> List.iter ~f:(fun value_name -> Format.fprintf ppf " <%s>" value_name);
   match positional.all_above_inclusive with
-  | Some { value_name; _ } -> Format.fprintf ppf "[%s]..." value_name
+  | Some { value_name; _ } -> Format.fprintf ppf " [%s]..." value_name
   | None -> ()
 ;;
 
