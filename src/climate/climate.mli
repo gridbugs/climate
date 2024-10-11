@@ -250,6 +250,12 @@ end
 (** Raised if the command being evaluated printed a usage message *)
 exception Usage
 
+module Program_name : sig
+  type t =
+    | Argv0
+    | Literal of string
+end
+
 module Command : sig
   type 'a t
 
@@ -314,7 +320,7 @@ module Command : sig
     -> ?program_exe_for_reentrant_query:[ `Program_name | `Other of string ]
     -> ?global_symbol_prefix:[ `Random | `Custom of string ]
     -> ?command_hash_in_function_names:bool
-    -> ?program_name:[ `Argv0 | `Literal of string ]
+    -> ?program_name:Program_name.t
     -> _ t
     -> string
 
@@ -324,7 +330,7 @@ module Command : sig
       [program_name] argument. *)
   val eval
     :  ?eval_config:Eval_config.t
-    -> ?program_name:[ `Argv0 | `Literal of string ]
+    -> ?program_name:Program_name.t
     -> 'a t
     -> string list
     -> 'a

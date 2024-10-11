@@ -732,6 +732,17 @@ module Eval_config = struct
   ;;
 end
 
+module Program_name = struct
+  type t =
+    | Argv0
+    | Literal of string
+
+  let get = function
+    | Argv0 -> Sys.argv.(0)
+    | Literal name -> name
+  ;;
+end
+
 module Command = struct
   type internal = Print_completion_script_bash
 
@@ -860,18 +871,13 @@ module Command = struct
     ?(program_exe_for_reentrant_query = `Program_name)
     ?(global_symbol_prefix = `Random)
     ?(command_hash_in_function_names = true)
-    ?(program_name = `Argv0)
+    ?(program_name = Program_name.Argv0)
     t
     =
-    let program_name =
-      match program_name with
-      | `Argv0 -> Sys.argv.(0)
-      | `Literal name -> name
-    in
     completion_spec t
     |> Completion.generate_bash
          ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
-         ~program_name
+         ~program_name:(Program_name.get program_name)
          ~program_exe_for_reentrant_query
          ~global_symbol_prefix
          ~command_hash_in_function_names
@@ -1009,13 +1015,13 @@ module Command = struct
     run ~eval_config (singleton ?desc arg_parser)
   ;;
 
-  let eval ?(eval_config = Eval_config.default) ?(program_name = `Argv0) t args =
-    let program =
-      match program_name with
-      | `Argv0 -> Sys.argv.(0)
-      | `Literal name -> name
-    in
-    eval ~eval_config t { Command_line.Raw.args; program }
+  let eval
+    ?(eval_config = Eval_config.default)
+    ?(program_name = Program_name.Argv0)
+    t
+    args
+    =
+    eval ~eval_config t { Command_line.Raw.args; program = Program_name.get program_name }
   ;;
 end
 

@@ -35,7 +35,7 @@ let () =
   print_endline
     (completion_script_bash
        command
-       ~program_name:(`Literal "fib")
+       ~program_name:(Literal "fib")
        ~program_exe_for_reentrant_query
        ~global_symbol_prefix:(`Custom "__fib__"))
 ;;

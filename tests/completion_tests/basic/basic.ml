@@ -15,7 +15,7 @@ let () =
   print_endline
     (Command.completion_script_bash
        command
-       ~program_name:(`Literal "basic")
+       ~program_name:(Literal "basic")
        ~global_symbol_prefix:(`Custom "_basic_")
        ~command_hash_in_function_names:false)
 ;;
