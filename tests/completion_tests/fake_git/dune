@@ -4,4 +4,5 @@
  (libraries climate unix))
 
 (cram
+ (package climate_tests)
  (deps fake_git.exe))
