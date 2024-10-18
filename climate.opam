@@ -8,7 +8,7 @@ homepage: "https://github.com/gridbugs/climate"
 bug-reports: "https://github.com/gridbugs/climate/issues"
 depends: [
   "dune" {>= "3.0"}
-  "ocaml"
+  "ocaml" {>= "4.14"}
   "odoc" {with-doc}
 ]
 build: [

@@ -14,20 +14,20 @@
  (name climate)
  (synopsis "Declarative command-line parser for OCaml")
  (depends
-   ocaml))
+   (ocaml (>= 4.14))))
 
 (package
  (name climate_cmdliner)
  (synopsis "Implements a subset of cmdliner's interface using climate")
  (depends
-   ocaml
+   (ocaml (>= 4.14))
    (climate (= :version))))
 
 (package
  (name climate_tests)
  (synopsis "Tests for climate packages")
  (depends
-   ocaml
+   (ocaml (>= 4.14))
    climate
    ppx_inline_test
    ppx_expect))
