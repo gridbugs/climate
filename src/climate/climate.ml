@@ -11,6 +11,8 @@ let name_of_string_exn string =
 exception Usage
 
 module Arg_parser = struct
+  module Completion_ = Completion
+
   module Context = struct
     type t =
       { raw_arg_table : Raw_arg_table.t
@@ -662,6 +664,7 @@ module Completion_config = struct
     ; program_exe_for_reentrant_query : [ `Program_name | `Other of string ]
     ; global_symbol_prefix : [ `Random | `Custom of string ]
     ; command_hash_in_function_names : bool
+    ; options : Completion.Options.t
     }
 
   (* An internal argument parser accepting arguments for configuring
@@ -704,6 +707,18 @@ module Completion_config = struct
            generated functions, but such collisions are rare in practice and disabling \
            hashes makes the generated code easier to read."
         [ "no-command-hash-in-function-names" ]
+    and+ no_comments =
+      flag ~desc:"Omit comments from the generated completion script." [ "no-comments" ]
+    and+ minify_global_names =
+      flag
+        ~desc:
+          "Rename global variables and functions in completion script to be as short as \
+           possible."
+        [ "minify-global-names" ]
+    and+ no_whitespace =
+      flag
+        ~desc:"Remove unnecessary whitespace from generated completion script."
+        [ "no-whitespace" ]
     in
     let program_name =
       match program_name with
@@ -720,10 +735,14 @@ module Completion_config = struct
       | Some global_symbol_prefix -> `Custom global_symbol_prefix
       | None -> `Random
     in
+    let options =
+      { Completion_.Options.no_comments; minify_global_names; no_whitespace }
+    in
     { program_name
     ; program_exe_for_reentrant_query
     ; global_symbol_prefix
     ; command_hash_in_function_names = not no_command_hash_in_function_names
+    ; options
     }
   ;;
 end
@@ -878,6 +897,7 @@ module Command = struct
     ?(global_symbol_prefix = `Random)
     ?(command_hash_in_function_names = true)
     ?(program_name = Program_name.Argv0)
+    ?(options = Completion.Options.default)
     t
     =
     completion_spec t
@@ -887,7 +907,7 @@ module Command = struct
          ~program_exe_for_reentrant_query
          ~global_symbol_prefix
          ~command_hash_in_function_names
-         ~options:Completion.Options.default
+         ~options
   ;;
 
   module Reentrant_query = struct
@@ -986,13 +1006,14 @@ module Command = struct
           ~child_subcommands:[]
       in
       (* Print the completion script. Note that this can't be combined
-         into the regular parser logic because it needs to be the
+         into the regular parser logic because it needs to know the
          completion spec, which isn't available to regular argument
          parsers. *)
       let { Completion_config.program_name
           ; program_exe_for_reentrant_query
           ; global_symbol_prefix
           ; command_hash_in_function_names
+          ; options
           }
         =
         Arg_parser.eval arg_parser ~command_line ~ignore_errors:false
@@ -1005,7 +1026,7 @@ module Command = struct
            ~print_reentrant_completions_name:eval_config.print_reentrant_completions_name
            ~global_symbol_prefix
            ~command_hash_in_function_names
-           ~options:Completion.Options.default);
+           ~options);
       exit 0
   ;;
 

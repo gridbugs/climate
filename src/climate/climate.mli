@@ -333,6 +333,7 @@ module Command : sig
     -> ?global_symbol_prefix:[ `Random | `Custom of string ]
     -> ?command_hash_in_function_names:bool
     -> ?program_name:Program_name.t
+    -> ?options:Completion.Options.t
     -> _ t
     -> string
 
