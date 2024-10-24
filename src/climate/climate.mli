@@ -19,7 +19,12 @@ module Arg_parser : sig
       ; args : string list
       }
 
-    val file : string t
+    (** Complete using paths relative to the current directory. This can be
+        used with [conv]s of any type though care must be taken that the conv
+        knows how to parse paths. This requirement isn't enforced with types
+        as it would be too restrictive to be useful in general. *)
+    val file : _ t
+
     val values : 'a list -> 'a t
     val reentrant : (command_line -> 'a list) -> 'a t
     val reentrant_parse : 'a list parser -> 'a t
@@ -28,6 +33,13 @@ module Arg_parser : sig
     (** For use in cases the optionality of a value being
         parsed/completed needs to represented in the value itself. *)
     val some : 'a t -> 'a option t
+
+    (** Flatten the completion information into plain strings. This can be used
+        to supply completion hints that otherwise wouldn't satisfy the type
+        constraints within a [conv], though care must be taken to ensure that
+        the [conv] knows how to parse the suggestions as this will no longer be
+        enforced by the type system when this function is used. *)
+    val stringify : 'a t -> 'a print -> _ t
   end
 
   (** Knows how to interpret strings on the command line as a particular type

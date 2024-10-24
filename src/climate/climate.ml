@@ -49,6 +49,11 @@ module Arg_parser = struct
 
   let to_string_print to_string fmt value = Format.pp_print_string fmt (to_string value)
 
+  let value_to_string print value =
+    print Format.str_formatter value;
+    Format.flush_str_formatter ()
+  ;;
+
   module Completion = struct
     type command_line = Command_line.Rich.t =
       { program : string
@@ -56,30 +61,46 @@ module Arg_parser = struct
       ; args : string list
       }
 
-    (* Roughly duplicated from [Spec.Untyped_completion.t] but
-       with types that correspond to the type of the [conv] it will be
-       part of. *)
-    type _ t =
-      | File : string t
-      | Values : 'a list -> 'a t
-      | Reentrant : (command_line -> 'a list) -> 'a t
-      | Some : 'a t -> 'a option t
+    type 'a t =
+      | File
+      | Strings of string list
+      | Strings_reentrant of (command_line -> string list)
+      | Values of 'a list
+      | Values_reentrant of (command_line -> 'a list)
 
     let file = File
     let values values = Values values
-    let reentrant f = Reentrant f
+    let reentrant f = Values_reentrant f
 
     let reentrant_parse parser =
       let f command_line = eval parser ~command_line ~ignore_errors:true in
-      Reentrant f
+      Values_reentrant f
     ;;
 
     let reentrant_thunk f =
       let f _ = f () in
-      Reentrant f
+      Values_reentrant f
     ;;
 
-    let some t = Some t
+    let map t ~f =
+      match t with
+      | (File | Strings _ | Strings_reentrant _) as t' -> t'
+      | Values xs -> Values (List.map ~f xs)
+      | Values_reentrant get_suggestions ->
+        Values_reentrant (fun command_line -> List.map ~f (get_suggestions command_line))
+    ;;
+
+    let some t = map t ~f:Option.some
+
+    let stringify t print =
+      match t with
+      | (File | Strings _ | Strings_reentrant _) as t' -> t'
+      | Values xs -> Strings (List.map ~f:(value_to_string print) xs)
+      | Values_reentrant get_suggestions ->
+        Strings_reentrant
+          (fun command_line ->
+            List.map ~f:(value_to_string print) (get_suggestions command_line))
+    ;;
   end
 
   type 'a conv =
@@ -93,34 +114,19 @@ module Arg_parser = struct
     { parse; print; default_value_name; completion }
   ;;
 
-  let value_to_string print value =
-    print Format.str_formatter value;
-    Format.flush_str_formatter ()
-  ;;
-
-  let rec conv_untyped_completion
-    : type a.
-      a print
-      -> a Completion.t
-      -> (Command_line.Rich.t -> string list) Completion_spec.Hint.t
-    =
-    fun print completion ->
-    match completion with
+  let conv_untyped_completion print completion =
+    match (completion : _ Completion.t) with
     | File -> Completion_spec.Hint.File
+    | Strings strings -> Completion_spec.Hint.Values strings
+    | Strings_reentrant f -> Completion_spec.Hint.Reentrant f
     | Values values ->
       Completion_spec.Hint.Values (List.map values ~f:(value_to_string print))
-    | Reentrant f ->
+    | Values_reentrant f ->
       Completion_spec.Hint.Reentrant
         (fun command_line -> f command_line |> List.map ~f:(value_to_string print))
-    | Some completion ->
-      let print ppf v =
-        let v' : a = Some v in
-        print ppf v'
-      in
-      conv_untyped_completion print completion
   ;;
 
-  (* A conv can have a built in completion, but it's also possible for
+  (* A conv can have a built-in completion, but it's also possible for
      this to be overridden for a specific parser. This is a helper
      function for converting a given completion, falling back to the
      built-in completion if none is given. *)
