@@ -174,7 +174,8 @@ module Arg = struct
       | `Error message -> Error (`Msg message)
     in
     let default_value_name = "VALUE" in
-    let completion = None in
+    (* Complete within the file system by default *)
+    let completion = Some Climate.Arg_parser.Completion.file in
     { Climate.Arg_parser.parse; print; default_value_name; completion }
   ;;
 
