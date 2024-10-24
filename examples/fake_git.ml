@@ -21,7 +21,7 @@ let checkout =
   (* Multiple different completions for positional arguments *)
   let+ _branch = pos_req 0 (string_enum [ "foo"; "bar" ])
   and+ _ = pos_req 1 file
-  and+ _ = pos_right 2 branch_conv in
+  and+ _ = pos_right 1 branch_conv in
   ()
 ;;
 
