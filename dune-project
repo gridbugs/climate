@@ -5,8 +5,8 @@
 
 (source (github gridbugs/climate))
 (license MIT)
-(authors "Stephen Sherratt")
-(maintainers "https://github.com/gridbugs/climate/issues")
+(authors "Stephen Sherratt <stephen@sherra.tt>")
+(maintainers "Stephen Sherratt <stephen@sherra.tt>")
 
 (cram enable)
 
