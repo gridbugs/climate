@@ -723,6 +723,12 @@ module Completion_config = struct
       flag
         ~desc:"Use short names for local variables in generated bash script."
         [ "minify-local-variables" ]
+    and+ optimize_case_statements =
+      flag
+        ~desc:
+          "Combine sequences of contiguous case bodies in cases statements, merging \
+           their patterns."
+        [ "optimize-case-statements" ]
     in
     let program_name =
       match program_name with
@@ -744,6 +750,7 @@ module Completion_config = struct
       ; no_whitespace
       ; minify_global_names
       ; minify_local_variables
+      ; optimize_case_statements
       }
     in
     { program_name

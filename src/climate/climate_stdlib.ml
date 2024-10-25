@@ -44,6 +44,7 @@ module Option = struct
   let map t ~f = map f t
   let bind t ~f = bind t f
   let iter t ~f = iter f t
+  let equal a b ~eq = Option.equal eq a b
 end
 
 module List = struct
@@ -132,6 +133,7 @@ module Nonempty_list = struct
   let hd (x :: _) = x
   let append (x :: xs) (y :: ys) = x :: List.concat [ xs; [ y ]; ys ]
   let concat ((x :: xs) :: xss) = x :: List.append xs (List.concat_map ~f:to_list xss)
+  let equal a b ~eq = List.equal (to_list a) (to_list b) ~eq
 end
 
 module Nonnegative_int = struct

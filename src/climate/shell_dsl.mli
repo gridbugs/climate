@@ -134,6 +134,9 @@ module Stmt : sig
 
   (** Rename the suffix of all global names referenced within a block of statements *)
   val map_global_name_suffix : t list -> f:(string -> string) -> t list
+
+  (** Merge consecutive sequences of cases with the same body *)
+  val optimize_case_stmts : t list -> t list
 end
 
 module Bash : sig

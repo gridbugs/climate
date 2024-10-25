@@ -5,6 +5,7 @@
   > --no-whitespace \
   > --minify-global-names \
   > --minify-local-variables \
+  > --optimize-case-statements \
   > --no-command-hash-in-function-names > completion.sh
   $ x() { ../print_completions.sh ./completion.sh _fake_git_complete "$1" "$2"; }
 

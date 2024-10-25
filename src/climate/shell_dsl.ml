@@ -8,6 +8,7 @@ module Case_pattern = struct
   let singleton = Nonempty_list.singleton
   let of_strings = Fun.id
   let union = Nonempty_list.concat
+  let equal = Nonempty_list.equal ~eq:String.equal
 end
 
 module Local_variable = struct
@@ -25,6 +26,10 @@ module Local_variable = struct
     match style with
     | `Full -> full_name
     | `Short -> short_name
+  ;;
+
+  let equal a b =
+    String.equal a.full_name b.full_name && String.equal a.short_name b.short_name
   ;;
 end
 
@@ -77,15 +82,17 @@ and case =
   ; case_body : stmt list
   }
 
+and case_stmt =
+  { case_value : value
+  ; cases : case list
+  }
+
 and stmt =
   | Raw of string
   | Raw_with_global_name of string_with_global_name
   | Cond of cond
   | If of if_
-  | Case of
-      { value : value
-      ; cases : case list
-      }
+  | Case of case_stmt
   | While of conditional_block
   | Return of value
   | Comment of string
@@ -158,6 +165,28 @@ module Value = struct
   let literal_with_local_variable local_variable ~f =
     Literal_with_local_variable (local_variable, f)
   ;;
+
+  let equal a b =
+    match a, b with
+    | Literal a, Literal b -> String.equal a b
+    | Global a, Global b ->
+      String.equal (Global_name.suffix a.name) (Global_name.suffix b.name)
+    | Local_variable a, Local_variable b -> Local_variable.equal a b
+    | Argument a, Argument b -> Int.equal a b
+    | Literal_with_local_variable (var_a, f_a), Literal_with_local_variable (var_b, f_b)
+      ->
+      String.equal
+        (f_a var_a.Local_variable.full_name)
+        (f_b var_b.Local_variable.full_name)
+    | _ -> false
+  ;;
+end
+
+module Function_call = struct
+  let equal a b =
+    String.equal a.function_.name.suffix b.function_.name.suffix
+    && List.equal a.args b.args ~eq:Value.equal
+  ;;
 end
 
 module Cond = struct
@@ -186,10 +215,69 @@ module Cond = struct
         { string_of_name; global_name = Global_name.with_suffix global_name ~f }
     | _ -> t
   ;;
+
+  let equal a b =
+    match a, b with
+    | True, True -> true
+    | Call a, Call b -> Function_call.equal a b
+    | Test_raw_cond a, Test_raw_cond b -> String.equal a b
+    | ( Test_raw_cond_of_string_with_global_name a
+      , Test_raw_cond_of_string_with_global_name b ) ->
+      String.equal
+        (a.string_of_name a.global_name.suffix)
+        (b.string_of_name b.global_name.suffix)
+    | ( Test_raw_cond_of_string_with_local_variable (var_a, f_a)
+      , Test_raw_cond_of_string_with_local_variable (var_b, f_b) ) ->
+      String.equal
+        (f_a var_a.Local_variable.full_name)
+        (f_b var_b.Local_variable.full_name)
+    | _ -> false
+  ;;
 end
 
 module Stmt = struct
   type t = stmt
+
+  let rec equal a b =
+    match a, b with
+    | Raw a, Raw b -> String.equal a b
+    | Raw_with_global_name a, Raw_with_global_name b ->
+      String.equal
+        (a.string_of_name a.global_name.suffix)
+        (b.string_of_name b.global_name.suffix)
+    | Cond a, Cond b -> Cond.equal a b
+    | If a, If b -> if_equal a b
+    | ( Case { case_value = case_value_a; cases = cases_a }
+      , Case { case_value = case_value_b; cases = cases_b } ) ->
+      Value.equal case_value_a case_value_b && List.equal cases_a cases_b ~eq:case_equal
+    | While a, While b -> conditional_block_equal a b
+    | Return a, Return b -> Value.equal a b
+    | Comment _, Comment _ -> true
+    | Noop, Noop -> true
+    | Declare_local_variables a, Declare_local_variables b ->
+      List.equal
+        a
+        b
+        ~eq:(fun (local_variable_a, value_opt_a) (local_variable_b, value_opt_b) ->
+          Local_variable.equal local_variable_a local_variable_b
+          && Option.equal value_opt_a value_opt_b ~eq:Value.equal)
+    | Raw_with_local_variable _, Raw_with_local_variable _ -> (* TODO *) false
+    | Raw_with_local_variable2 _, Raw_with_local_variable2 _ -> (* TODO *) false
+    | Raw_with_local_variable_and_global_name _, Raw_with_local_variable_and_global_name _
+      -> (* TODO *) false
+    | _ -> false
+
+  and conditional_block_equal a b =
+    Cond.equal a.cond b.cond && List.equal a.body b.body ~eq:equal
+
+  and if_equal a b =
+    conditional_block_equal a.if_ b.if_
+    && List.equal a.elifs b.elifs ~eq:conditional_block_equal
+    && Option.equal a.else_ b.else_ ~eq:(List.equal ~eq:equal)
+
+  and case_equal a b =
+    Case_pattern.equal a.pattern b.pattern && List.equal a.case_body b.case_body ~eq:equal
+  ;;
 
   let raw s = Raw s
 
@@ -211,11 +299,11 @@ module Stmt = struct
     If { if_ = { cond; body }; elifs; else_ }
   ;;
 
-  let case value patterns =
+  let case case_value patterns =
     let cases =
       List.map patterns ~f:(fun (pattern, case_body) -> { pattern; case_body })
     in
-    Case { value; cases }
+    Case { case_value; cases }
   ;;
 
   let while_ cond body = While { cond; body }
@@ -260,8 +348,8 @@ module Stmt = struct
     | While { cond; body } ->
       let cond = Cond.map_global_name_suffix cond ~f in
       While { cond; body }
-    | Case { value; cases } ->
-      Case { value = Value.map_global_name_suffix value ~f; cases }
+    | Case { case_value; cases } ->
+      Case { case_value = Value.map_global_name_suffix case_value ~f; cases }
     | Return value -> Return (Value.map_global_name_suffix value ~f)
     | Declare_local_variables decls ->
       Declare_local_variables
@@ -307,7 +395,7 @@ module Stmt = struct
             Some else_, acc
         in
         If { if_ = { cond; body }; elifs; else_ }, acc
-      | Case { value; cases } ->
+      | Case { case_value; cases } ->
         let rev_cases, acc =
           List.fold_left
             cases
@@ -317,7 +405,7 @@ module Stmt = struct
               { pattern; case_body } :: rev_cases, acc)
         in
         let cases = List.rev rev_cases in
-        Case { value; cases }, acc
+        Case { case_value; cases }, acc
       | While { cond; body } ->
         let body, acc = loop body acc in
         While { cond; body }, acc
@@ -331,6 +419,48 @@ module Stmt = struct
 
   let map_global_name_suffix ts ~f =
     transform_blocks_top_down ts ~f:(List.map ~f:(map_global_name_suffix_single_stmt ~f))
+  ;;
+
+  let strip_comments_and_noops =
+    transform_blocks_top_down
+      ~f:
+        (List.filter ~f:(function
+          | Noop | Comment _ -> false
+          | _ -> true))
+  ;;
+
+  let equal_ignoring_comments_and_noops a b =
+    List.equal (strip_comments_and_noops a) (strip_comments_and_noops b) ~eq:equal
+  ;;
+
+  let optimize_case_stmt { case_value; cases } =
+    (* replace contiguous sequences of cases with identical bodies with single
+       cases combining the patterns of each identical case. *)
+    let rec loop = function
+      | [] -> []
+      | [ x ] -> [ x ]
+      | a :: b :: rest ->
+        if equal_ignoring_comments_and_noops a.case_body b.case_body
+        then (
+          (* merge a and b *)
+          let merged_pattern = Case_pattern.union [ a.pattern; b.pattern ] in
+          let case_body =
+            match a.case_body with
+            | Comment "Automatically merged case bodies" :: _ -> a.case_body
+            | _ -> Comment "Automatically merged case bodies" :: a.case_body
+          in
+          loop ({ pattern = merged_pattern; case_body } :: rest))
+        else a :: loop (b :: rest)
+    in
+    { case_value; cases = loop cases }
+  ;;
+
+  let optimize_case_stmts =
+    transform_blocks_top_down
+      ~f:
+        (List.map ~f:(function
+          | Case case_stmt -> Case (optimize_case_stmt case_stmt)
+          | other -> other))
   ;;
 end
 
@@ -443,8 +573,8 @@ module Bash = struct
            | Some stmts ->
              { indent; text = "else" } :: List.concat_map stmts ~f:(loop (indent + 1)))
         @ [ { indent; text = "fi" } ]
-      | Case { value; cases } ->
-        ({ indent; text = sprintf "case %s in" (value_to_string ~ctx value) }
+      | Case { case_value; cases } ->
+        ({ indent; text = sprintf "case %s in" (value_to_string ~ctx case_value) }
          :: List.concat_map cases ~f:(fun { pattern; case_body } ->
            let pattern_string =
              String.concat ~sep:" | " (Nonempty_list.to_list pattern)

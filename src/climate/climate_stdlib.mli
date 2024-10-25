@@ -32,6 +32,7 @@ module Option : sig
   val map : 'a t -> f:('a -> 'b) -> 'b t
   val bind : 'a t -> f:('a -> 'b t) -> 'b t
   val iter : 'a t -> f:('a -> unit) -> unit
+  val equal : 'a t -> 'a t -> eq:('a -> 'a -> bool) -> bool
 end
 
 module List : sig
@@ -68,6 +69,7 @@ module Nonempty_list : sig
   val hd : 'a t -> 'a
   val append : 'a t -> 'a t -> 'a t
   val concat : 'a t t -> 'a t
+  val equal : 'a t -> 'a t -> eq:('a -> 'a -> bool) -> bool
 end
 
 module Nonnegative_int : sig

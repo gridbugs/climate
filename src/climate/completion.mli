@@ -6,6 +6,7 @@ module Options : sig
     ; no_whitespace : bool
     ; minify_global_names : bool
     ; minify_local_variables : bool
+    ; optimize_case_statements : bool
     }
 
   val default : t

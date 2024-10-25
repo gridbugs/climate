@@ -7,6 +7,7 @@ module Options = struct
     ; no_whitespace : bool
     ; minify_global_names : bool
     ; minify_local_variables : bool
+    ; optimize_case_statements : bool
     }
 
   let default =
@@ -14,6 +15,7 @@ module Options = struct
     ; no_whitespace = false
     ; minify_global_names = false
     ; minify_local_variables = false
+    ; optimize_case_statements = false
     }
   ;;
 end
@@ -637,7 +639,18 @@ module Short_symbol = struct
   ;;
 end
 
-let post_process_globals { Options.no_comments; minify_global_names; _ } globals =
+let post_process_globals
+  { Options.no_comments; minify_global_names; optimize_case_statements; _ }
+  globals
+  =
+  let globals =
+    if optimize_case_statements
+    then
+      List.map
+        globals
+        ~f:(Global_named_value.with_function_stmts ~f:Stmt.optimize_case_stmts)
+    else globals
+  in
   let globals =
     if no_comments
     then
