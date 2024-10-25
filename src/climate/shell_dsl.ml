@@ -2,6 +2,14 @@ open! Import
 
 type global_name = { suffix : string }
 
+module Case_pattern = struct
+  type t = string Nonempty_list.t
+
+  let singleton = Nonempty_list.singleton
+  let of_strings = Fun.id
+  let union = Nonempty_list.concat
+end
+
 type global_value =
   | Global_variable of { initial_value : string }
   | Function of { body : stmt list }
@@ -42,8 +50,8 @@ and if_ =
   ; else_ : stmt list option
   }
 
-and case_pattern =
-  { pattern : string Nonempty_list.t
+and case =
+  { pattern : Case_pattern.t
   ; case_body : stmt list
   }
 
@@ -54,7 +62,7 @@ and stmt =
   | If of if_
   | Case of
       { value : value
-      ; patterns : case_pattern list
+      ; cases : case list
       }
   | While of conditional_block
   | Return of value
@@ -164,16 +172,11 @@ module Stmt = struct
     If { if_ = { cond; body }; elifs; else_ }
   ;;
 
-  type patterns = string Nonempty_list.t
-
-  let pattern = Nonempty_list.singleton
-  let patterns = Fun.id
-
   let case value patterns =
-    let patterns =
+    let cases =
       List.map patterns ~f:(fun (pattern, case_body) -> { pattern; case_body })
     in
-    Case { value; patterns }
+    Case { value; cases }
   ;;
 
   let while_ cond body = While { cond; body }
@@ -203,8 +206,8 @@ module Stmt = struct
     | While { cond; body } ->
       let cond = Cond.map_global_name_suffix cond ~f in
       While { cond; body }
-    | Case { value; patterns } ->
-      Case { value = Value.map_global_name_suffix value ~f; patterns }
+    | Case { value; cases } ->
+      Case { value = Value.map_global_name_suffix value ~f; cases }
     | Return value -> Return (Value.map_global_name_suffix value ~f)
     | _ -> t
   ;;
@@ -237,17 +240,17 @@ module Stmt = struct
             Some else_, acc
         in
         If { if_ = { cond; body }; elifs; else_ }, acc
-      | Case { value; patterns } ->
-        let rev_patterns, acc =
+      | Case { value; cases } ->
+        let rev_cases, acc =
           List.fold_left
-            patterns
+            cases
             ~init:([], acc)
-            ~f:(fun (rev_patterns, acc) { pattern; case_body } ->
+            ~f:(fun (rev_cases, acc) { pattern; case_body } ->
               let case_body, acc = loop case_body acc in
-              { pattern; case_body } :: rev_patterns, acc)
+              { pattern; case_body } :: rev_cases, acc)
         in
-        let patterns = List.rev rev_patterns in
-        Case { value; patterns }, acc
+        let cases = List.rev rev_cases in
+        Case { value; cases }, acc
       | While { cond; body } ->
         let body, acc = loop body acc in
         While { cond; body }, acc
@@ -350,11 +353,11 @@ module Bash = struct
                 stmts
                 ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
       @ [ { indent; text = "fi" } ]
-    | Case { value; patterns } ->
+    | Case { value; cases } ->
       ({ indent
        ; text = sprintf "case %s in" (value_to_string ~global_symbol_prefix value)
        }
-       :: List.concat_map patterns ~f:(fun { pattern; case_body } ->
+       :: List.concat_map cases ~f:(fun { pattern; case_body } ->
          let pattern_string = String.concat ~sep:" | " (Nonempty_list.to_list pattern) in
          ({ indent = indent + 1; text = sprintf "%s)" pattern_string }
           :: List.concat_map

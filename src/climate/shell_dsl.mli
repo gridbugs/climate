@@ -54,6 +54,14 @@ module Cond : sig
   val test_raw_of_string_with_global_name : f:(string -> string) -> Global_name.t -> t
 end
 
+module Case_pattern : sig
+  type t
+
+  val singleton : string -> t
+  val of_strings : string Nonempty_list.t -> t
+  val union : t Nonempty_list.t -> t
+end
+
 module Stmt : sig
   type t = stmt
 
@@ -67,12 +75,7 @@ module Stmt : sig
     -> t
 
   val if_ : ?elifs:(Cond.t * t list) list -> ?else_:t list -> Cond.t -> t list -> t
-
-  type patterns
-
-  val pattern : string -> patterns
-  val patterns : string Nonempty_list.t -> patterns
-  val case : Value.t -> (patterns * t list) list -> t
+  val case : Value.t -> (Case_pattern.t * t list) list -> t
   val while_ : Cond.t -> t list -> t
   val return : Value.t -> t
   val comment : string -> t

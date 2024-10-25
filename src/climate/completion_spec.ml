@@ -21,10 +21,17 @@ end
 
 module Named_arg = struct
   type 'reentrant t =
-    { name : Name.t
+    { names : Name.t Nonempty_list.t
     ; has_param : bool
     ; hint : 'reentrant Hint.t option
     }
+
+  let first_name { names; _ } = Nonempty_list.hd names
+
+  let to_patterns_with_dashes { names; _ } =
+    Nonempty_list.map names ~f:Name.to_string_with_dashes
+    |> Shell_dsl.Case_pattern.of_strings
+  ;;
 
   let replace_reentrants_with_indices t acc =
     match t.hint with
@@ -113,6 +120,28 @@ module Parser_spec = struct
     in
     from_named_args @ from_positional_args_hints
   ;;
+
+  let all_short_names_with_dashes_sorted { named_args; _ } =
+    List.concat_map named_args ~f:(fun { Named_arg.names; _ } ->
+      Nonempty_list.to_list names
+      |> List.filter_map ~f:(fun name ->
+        if Name.is_short name then Some (Name.to_string_with_dashes name) else None))
+    |> List.sort ~cmp:String.compare
+  ;;
+
+  let all_long_names_with_dashes_sorted { named_args; _ } =
+    List.concat_map named_args ~f:(fun { Named_arg.names; _ } ->
+      Nonempty_list.to_list names
+      |> List.filter_map ~f:(fun name ->
+        if Name.is_long name then Some (Name.to_string_with_dashes name) else None))
+    |> List.sort ~cmp:String.compare
+  ;;
+
+  let all_names_with_dashes_sorted { named_args; _ } =
+    List.concat_map named_args ~f:(fun { Named_arg.names; _ } ->
+      Nonempty_list.to_list names |> List.map ~f:Name.to_string_with_dashes)
+    |> List.sort ~cmp:String.compare
+  ;;
 end
 
 type 'reentrant t =
@@ -126,21 +155,6 @@ and 'reentrant subcommand =
   }
 
 let empty = { parser_spec = Parser_spec.empty; subcommands = [] }
-
-let named_args_sorted { parser_spec = { named_args; _ }; _ } =
-  let cmp (arg1 : _ Named_arg.t) (arg2 : _ Named_arg.t) =
-    String.compare (Name.to_string arg1.name) (Name.to_string arg2.name)
-  in
-  let long_args =
-    List.filter named_args ~f:(fun { Named_arg.name; _ } -> Name.is_long name)
-    |> List.sort ~cmp
-  in
-  let short_args =
-    List.filter named_args ~f:(fun { Named_arg.name; _ } -> Name.is_short name)
-    |> List.sort ~cmp
-  in
-  long_args @ short_args
-;;
 
 let rec replace_reentrants_with_indices t acc =
   let parser_spec, acc = Parser_spec.replace_reentrants_with_indices t.parser_spec acc in

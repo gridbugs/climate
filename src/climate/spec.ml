@@ -44,10 +44,11 @@ module Named = struct
       | None -> Nonempty_list.hd t.names
     ;;
 
-    let to_completion_named_args t =
-      Nonempty_list.to_list t.names
-      |> List.map ~f:(fun name ->
-        { Completion_spec.Named_arg.name; has_param = has_param t; hint = t.completion })
+    let to_completion_named_arg t =
+      { Completion_spec.Named_arg.names = t.names
+      ; has_param = has_param t
+      ; hint = t.completion
+      }
     ;;
   end
 
@@ -91,9 +92,7 @@ module Named = struct
     List.filter infos ~f:(fun { Info.required; _ } -> not required)
   ;;
 
-  let to_completion_named_args { infos } =
-    List.concat_map infos ~f:Info.to_completion_named_args
-  ;;
+  let to_completion_named_args { infos } = List.map infos ~f:Info.to_completion_named_arg
 end
 
 module Positional = struct

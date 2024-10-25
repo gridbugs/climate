@@ -9,10 +9,16 @@ end
 
 module Named_arg : sig
   type 'reentrant t =
-    { name : Name.t
+    { names : Name.t Nonempty_list.t
     ; has_param : bool
     ; hint : 'reentrant Hint.t option
     }
+
+  (** Whichever name was declared first in the list of names for this
+      argument. Only use this for debugging messages. *)
+  val first_name : _ t -> Name.t
+
+  val to_patterns_with_dashes : _ t -> Shell_dsl.Case_pattern.t
 end
 
 module Positional_args_hints : sig
@@ -31,6 +37,9 @@ module Parser_spec : sig
     }
 
   val empty : _ t
+  val all_short_names_with_dashes_sorted : _ t -> string list
+  val all_long_names_with_dashes_sorted : _ t -> string list
+  val all_names_with_dashes_sorted : _ t -> string list
 end
 
 (** A description of an entire CLI, with just enough information to
@@ -57,7 +66,6 @@ and 'reentrant subcommand =
   }
 
 val empty : _ t
-val named_args_sorted : 'a t -> 'a Named_arg.t list
 
 (** Returns all reentrant values in order of their reentrant query
     index. Reentrant query indices can be used as an index into this

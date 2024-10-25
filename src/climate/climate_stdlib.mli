@@ -30,6 +30,7 @@ module Option : sig
   include module type of Option
 
   val map : 'a t -> f:('a -> 'b) -> 'b t
+  val bind : 'a t -> f:('a -> 'b t) -> 'b t
   val iter : 'a t -> f:('a -> unit) -> unit
 end
 
@@ -65,6 +66,8 @@ module Nonempty_list : sig
   val to_list : 'a t -> 'a list
   val map : 'a t -> f:('a -> 'b) -> 'b t
   val hd : 'a t -> 'a
+  val append : 'a t -> 'a t -> 'a t
+  val concat : 'a t t -> 'a t
 end
 
 module Nonnegative_int : sig

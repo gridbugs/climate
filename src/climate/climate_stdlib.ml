@@ -42,6 +42,7 @@ module Option = struct
   include Option
 
   let map t ~f = map f t
+  let bind t ~f = bind t f
   let iter t ~f = iter f t
 end
 
@@ -128,10 +129,9 @@ module Nonempty_list = struct
 
   let to_list (x :: xs) = List.(x :: xs)
   let map (x :: xs) ~f = f x :: List.map xs ~f
-
-  let hd = function
-    | x :: _ -> x
-  ;;
+  let hd (x :: _) = x
+  let append (x :: xs) (y :: ys) = x :: List.concat [ xs; [ y ]; ys ]
+  let concat ((x :: xs) :: xss) = x :: List.append xs (List.concat_map ~f:to_list xss)
 end
 
 module Nonnegative_int = struct
