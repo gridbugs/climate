@@ -4,12 +4,17 @@ open Shell_dsl
 module Options = struct
   type t =
     { no_comments : bool
-    ; minify_global_names : bool
     ; no_whitespace : bool
+    ; minify_global_names : bool
+    ; minify_local_variables : bool
     }
 
   let default =
-    { no_comments = false; minify_global_names = false; no_whitespace = false }
+    { no_comments = false
+    ; no_whitespace = false
+    ; minify_global_names = false
+    ; minify_local_variables = false
+    }
   ;;
 end
 
@@ -171,6 +176,9 @@ module Reentrant_query = struct
 
   let run ~program_exe ~print_reentrant_completions_name =
     let open Stmt in
+    let query_index = Local_variable.create "query_index" ~short_name:"i" in
+    let current_word = Local_variable.create "current_word" ~short_name:"w" in
+    let command = Local_variable.create "command" ~short_name:"c" in
     function_
       "reentrant_query_run"
       [ comment
@@ -178,16 +186,24 @@ module Reentrant_query = struct
            the cursor). It invokes the program with the given subcommand path and some \
            special arguments that cause it to emit the result of the requested query. \
            The result is then added to COMPREPLY."
-      ; raw "local query_index=$1"
-      ; raw "local current_word=$2"
-      ; raw "local command suggestions"
-      ; raw
-          (sprintf
-             "command=\"%s %s=$query_index -- $COMP_LINE\""
-             program_exe
-             (Name.to_string_with_dashes print_reentrant_completions_name))
-      ; raw "suggestions=$(eval \"$command\")"
-      ; raw "COMPREPLY+=($(compgen -W \"$suggestions\" -- \"$current_word\"))"
+      ; declare_local_variables
+          [ local_init query_index (Value.argument 1)
+          ; local_init current_word (Value.argument 2)
+          ]
+      ; declare_local_variables
+          [ local_init
+              command
+              (Value.literal_with_local_variable query_index ~f:(fun query_index ->
+                 sprintf
+                   "%s %s=%s -- $COMP_LINE"
+                   program_exe
+                   (Name.to_string_with_dashes print_reentrant_completions_name)
+                   query_index))
+          ]
+      ; raw_with_local_variable2
+          command
+          current_word
+          ~f:(sprintf "COMPREPLY+=($(compgen -W \"$(eval \"%s\")\" -- \"%s\"))")
       ]
   ;;
 end
@@ -230,7 +246,7 @@ module Subcommand_and_positional_arg_completion = struct
     in
     let complete_positional_args_function =
       let stmt_of_hint =
-        hint_add_reply ~reentrant_query_run ~current_word:(Value.literal "$1")
+        hint_add_reply ~reentrant_query_run ~current_word:(Value.argument 1)
       in
       let cases =
         List.mapi spec.parser_spec.positional_args_hints.finite_args ~f:(fun i hint ->
@@ -257,7 +273,7 @@ module Subcommand_and_positional_arg_completion = struct
                   the index of the current positional argument on the command line and \
                   adds comp replies for that positional argument begining with that \
                   prefix."
-             ; case (Value.literal "$2") cases
+             ; case (Value.argument 2) cases
              ])
     in
     List.filter_opt
@@ -281,7 +297,7 @@ module Subcommand_and_positional_arg_completion = struct
                          ; hint_add_reply
                              hint
                              ~reentrant_query_run
-                             ~current_word:(Value.literal "$2")
+                             ~current_word:(Value.argument 2)
                          ; return (Value.global Status.done_)
                          ]
                        in
@@ -304,7 +320,7 @@ module Subcommand_and_positional_arg_completion = struct
                |> Option.map ~f:(fun patterns ->
                  ( Case_pattern.union patterns
                  , [ comment "case for named arguments without hints"
-                   ; call Add_reply.files [ Value.literal "$2" ]
+                   ; call Add_reply.files [ Value.argument 2 ]
                    ; return (Value.global Status.done_)
                    ] ))
                |> Option.to_list
@@ -384,14 +400,14 @@ module Subcommand_and_positional_arg_completion = struct
                           in
                           call
                             Add_reply.fixed
-                            [ Value.literal "$2"
+                            [ Value.argument 2
                             ; Value.literal space_separated_subcommands
                             ])
                      ; (match complete_positional_args_function with
                         | Some complete_positional_args_function ->
                           call
                             complete_positional_args_function
-                            [ Value.literal "$2"
+                            [ Value.argument 2
                             ; Value.literal "$positional_argument_index"
                             ]
                         | None ->
@@ -415,7 +431,7 @@ module Subcommand_and_positional_arg_completion = struct
                             in
                             call
                               Add_reply.fixed
-                              [ Value.literal "$2"; Value.literal space_separated_names ])
+                              [ Value.argument 2; Value.literal space_separated_names ])
                          ]
                      ; return (Value.global Status.done_)
                      ]
@@ -556,12 +572,12 @@ let rec functions_of_spec
   subcommand_completions @ subcommand_and_positional_arg_completion
 ;;
 
-let bash_header ~program_name ~global_symbol_prefix =
+let bash_header ~program_name ~global_symbol_prefix ~local_variable_style =
   let open Stmt in
   [ raw "#!/usr/bin/env bash"
   ; comment (sprintf "Completion script for %s. Generated by climate." program_name)
   ]
-  |> List.map ~f:(Bash.stmt_to_string ~global_symbol_prefix)
+  |> List.map ~f:(Bash.stmt_to_string ~global_symbol_prefix ~local_variable_style)
   |> String.concat ~sep:"\n"
 ;;
 
@@ -710,14 +726,18 @@ let generate_bash
     | `Random -> make_random_prefix ()
     | `Custom s -> s
   in
+  let local_variable_style = if options.minify_local_variables then `Short else `Full in
   String.concat
     ~sep:(if options.no_whitespace then "\n" else "\n\n")
-    ([ bash_header ~program_name ~global_symbol_prefix ]
-     @ List.map all_functions ~f:(Bash.global_named_value_to_string ~global_symbol_prefix)
+    ([ bash_header ~program_name ~global_symbol_prefix ~local_variable_style ]
+     @ List.map
+         all_functions
+         ~f:
+           (Bash.global_named_value_to_string ~global_symbol_prefix ~local_variable_style)
      @ [ Stmt.raw_with_global_name
            (Global_named_value.name (List.hd all_functions))
            ~f:(fun complete_entry ->
              sprintf "complete -F %s %s" complete_entry program_name)
-         |> Bash.stmt_to_string ~global_symbol_prefix
+         |> Bash.stmt_to_string ~global_symbol_prefix ~local_variable_style
        ])
 ;;

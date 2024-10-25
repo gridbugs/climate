@@ -10,6 +10,24 @@ module Case_pattern = struct
   let union = Nonempty_list.concat
 end
 
+module Local_variable = struct
+  type t =
+    { full_name : string
+    ; short_name : string
+    }
+
+  let create ?short_name full_name =
+    let short_name = Option.value short_name ~default:full_name in
+    { full_name; short_name }
+  ;;
+
+  let to_string ~style { full_name; short_name } =
+    match style with
+    | `Full -> full_name
+    | `Short -> short_name
+  ;;
+end
+
 type global_value =
   | Global_variable of { initial_value : string }
   | Function of { body : stmt list }
@@ -32,6 +50,9 @@ and string_with_global_name =
 and value =
   | Literal of string
   | Global of global_named_value
+  | Local_variable of Local_variable.t
+  | Argument of int
+  | Literal_with_local_variable of (Local_variable.t * (string -> string))
 
 and cond =
   | True
@@ -68,6 +89,10 @@ and stmt =
   | Return of value
   | Comment of string
   | Noop
+  | Declare_local_variables of (Local_variable.t * value option) list
+  | Raw_with_local_variable of (Local_variable.t * (string -> string))
+  | Raw_with_local_variable2 of
+      (Local_variable.t * Local_variable.t * (string -> string -> string))
 
 module Global_name = struct
   type t = global_name
@@ -122,6 +147,13 @@ module Value = struct
     match t with
     | Global g -> Global (Global_named_value.with_suffix g ~f)
     | _ -> t
+  ;;
+
+  let local_variable local_variable = Local_variable local_variable
+  let argument index = Argument index
+
+  let literal_with_local_variable local_variable ~f =
+    Literal_with_local_variable (local_variable, f)
   ;;
 end
 
@@ -181,6 +213,11 @@ module Stmt = struct
 
   let while_ cond body = While { cond; body }
   let return s = Return s
+  let local_decl local_variable = local_variable, None
+  let local_init local_variable value = local_variable, Some value
+  let declare_local_variables vars = Declare_local_variables vars
+  let raw_with_local_variable var ~f = Raw_with_local_variable (var, f)
+  let raw_with_local_variable2 var0 var1 ~f = Raw_with_local_variable2 (var0, var1, f)
   let comment s = Comment s
   let noop = Noop
 
@@ -191,6 +228,8 @@ module Stmt = struct
 
   let map_global_name_suffix_single_stmt t ~f =
     match t with
+    | Raw _ | Noop | Comment _ | Raw_with_local_variable _ | Raw_with_local_variable2 _ ->
+      t
     | Raw_with_global_name { string_of_name; global_name } ->
       Raw_with_global_name
         { string_of_name; global_name = Global_name.with_suffix global_name ~f }
@@ -209,7 +248,11 @@ module Stmt = struct
     | Case { value; cases } ->
       Case { value = Value.map_global_name_suffix value ~f; cases }
     | Return value -> Return (Value.map_global_name_suffix value ~f)
-    | _ -> t
+    | Declare_local_variables decls ->
+      Declare_local_variables
+        (List.map decls ~f:(function
+          | variable, Some value -> variable, Some (Value.map_global_name_suffix value ~f)
+          | other -> other))
   ;;
 
   let fold_blocks_top_down ts ~init ~f =
@@ -223,7 +266,15 @@ module Stmt = struct
       List.rev rev_ts, acc
     and single t acc =
       match t with
-      | Raw _ | Raw_with_global_name _ | Cond _ | Return _ | Comment _ | Noop -> t, acc
+      | Raw _
+      | Raw_with_global_name _
+      | Cond _
+      | Return _
+      | Comment _
+      | Noop
+      | Declare_local_variables _
+      | Raw_with_local_variable _
+      | Raw_with_local_variable2 _ -> t, acc
       | If { if_ = { cond; body }; elifs; else_ } ->
         let body, acc = loop body acc in
         let rev_elifs, acc =
@@ -267,32 +318,49 @@ module Stmt = struct
   ;;
 end
 
+type ctx =
+  { global_symbol_prefix : string
+  ; local_variable_style : [ `Full | `Short ]
+  }
+
 module Bash = struct
-  let rec value_to_string ~global_symbol_prefix = function
+  let rec value_to_string ~ctx = function
     | Literal s -> sprintf "\"%s\"" s
     | Global global_named_value ->
       sprintf
         "\"$%s\""
         (Global_named_value.global_name_with_prefix
-           ~global_symbol_prefix
+           ~global_symbol_prefix:ctx.global_symbol_prefix
            global_named_value)
+    | Local_variable local_variable ->
+      sprintf
+        "\"$%s\""
+        (Local_variable.to_string ~style:ctx.local_variable_style local_variable)
+    | Argument index -> sprintf "\"$%d\"" index
+    | Literal_with_local_variable (v, f) ->
+      let variable_string =
+        sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style v)
+      in
+      sprintf "\"%s\"" (f variable_string)
 
-  and function_call_to_string ~global_symbol_prefix { function_; args } =
+  and function_call_to_string ~ctx { function_; args } =
     let function_name =
-      Global_named_value.global_name_with_prefix ~global_symbol_prefix function_
+      Global_named_value.global_name_with_prefix
+        ~global_symbol_prefix:ctx.global_symbol_prefix
+        function_
     in
-    let args_strings = List.map args ~f:(value_to_string ~global_symbol_prefix) in
+    let args_strings = List.map args ~f:(value_to_string ~ctx) in
     String.concat ~sep:" " (function_name :: args_strings)
   ;;
 
-  let cond_to_string ~global_symbol_prefix = function
+  let cond_to_string ~ctx = function
     | True -> "true"
-    | Call function_call -> function_call_to_string ~global_symbol_prefix function_call
+    | Call function_call -> function_call_to_string ~ctx function_call
     | Test_raw_cond s -> sprintf "[ %s ]" s
     | Test_raw_cond_of_string_with_global_name string_with_global_name ->
       let s =
         Global_named_value.string_with_global_name_to_string
-          ~global_symbol_prefix
+          ~global_symbol_prefix:ctx.global_symbol_prefix
           string_with_global_name
       in
       sprintf "[ %s ]" s
@@ -319,76 +387,88 @@ module Bash = struct
       List.rev line |> String.concat ~sep:(String.make 1 sep))
   ;;
 
-  let rec stmt_to_lines_with_indent ~global_symbol_prefix ~indent = function
-    | Raw text -> [ { indent; text } ]
-    | Raw_with_global_name string_with_global_name ->
-      let text =
-        Global_named_value.string_with_global_name_to_string
-          ~global_symbol_prefix
-          string_with_global_name
-      in
-      [ { text; indent } ]
-    | Cond c ->
-      let text = cond_to_string ~global_symbol_prefix c in
-      [ { text; indent } ]
-    | If { if_; elifs; else_ } ->
-      ({ indent
-       ; text = sprintf "if %s; then" (cond_to_string ~global_symbol_prefix if_.cond)
-       }
-       :: List.concat_map
-            if_.body
-            ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
-      @ List.concat_map elifs ~f:(fun { cond; body } ->
-        { indent
-        ; text = sprintf "elif %s; then" (cond_to_string ~global_symbol_prefix cond)
-        }
-        :: List.concat_map
-             body
-             ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
-      @ (match else_ with
-         | None -> []
-         | Some stmts ->
-           { indent; text = "else" }
-           :: List.concat_map
-                stmts
-                ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
-      @ [ { indent; text = "fi" } ]
-    | Case { value; cases } ->
-      ({ indent
-       ; text = sprintf "case %s in" (value_to_string ~global_symbol_prefix value)
-       }
-       :: List.concat_map cases ~f:(fun { pattern; case_body } ->
-         let pattern_string = String.concat ~sep:" | " (Nonempty_list.to_list pattern) in
-         ({ indent = indent + 1; text = sprintf "%s)" pattern_string }
-          :: List.concat_map
-               case_body
-               ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 2)))
-         @ [ { indent = indent + 2; text = ";;" } ]))
-      @ [ { indent; text = "esac" } ]
-    | While { cond; body } ->
-      ({ indent
-       ; text = sprintf "while %s; do" (cond_to_string ~global_symbol_prefix cond)
-       }
-       :: List.concat_map
-            body
-            ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:(indent + 1)))
-      @ [ { indent; text = "done" } ]
-    | Return value ->
-      [ { indent
-        ; text = sprintf "return %s" (value_to_string ~global_symbol_prefix value)
-        }
-      ]
-    | Comment comment ->
-      let comment_line_prefix = "# " in
-      let max_line_length =
-        Int.max (80 - String.length comment_line_prefix - (indent * 4)) 20
-      in
-      let lines =
-        split_string_on_with_max_line_length ~sep:' ' ~max_line_length comment
-      in
-      List.map lines ~f:(fun line ->
-        { indent; text = String.cat comment_line_prefix line })
-    | Noop -> [ { indent; text = ":" } ]
+  let stmt_to_bash_lines_with_indent ~ctx ~indent =
+    let rec loop indent = function
+      | Raw text -> [ { indent; text } ]
+      | Raw_with_global_name string_with_global_name ->
+        let text =
+          Global_named_value.string_with_global_name_to_string
+            ~global_symbol_prefix:ctx.global_symbol_prefix
+            string_with_global_name
+        in
+        [ { text; indent } ]
+      | Cond c ->
+        let text = cond_to_string ~ctx c in
+        [ { text; indent } ]
+      | If { if_; elifs; else_ } ->
+        ({ indent; text = sprintf "if %s; then" (cond_to_string ~ctx if_.cond) }
+         :: List.concat_map if_.body ~f:(loop (indent + 1)))
+        @ List.concat_map elifs ~f:(fun { cond; body } ->
+          { indent; text = sprintf "elif %s; then" (cond_to_string ~ctx cond) }
+          :: List.concat_map body ~f:(loop (indent + 1)))
+        @ (match else_ with
+           | None -> []
+           | Some stmts ->
+             { indent; text = "else" } :: List.concat_map stmts ~f:(loop (indent + 1)))
+        @ [ { indent; text = "fi" } ]
+      | Case { value; cases } ->
+        ({ indent; text = sprintf "case %s in" (value_to_string ~ctx value) }
+         :: List.concat_map cases ~f:(fun { pattern; case_body } ->
+           let pattern_string =
+             String.concat ~sep:" | " (Nonempty_list.to_list pattern)
+           in
+           ({ indent = indent + 1; text = sprintf "%s)" pattern_string }
+            :: List.concat_map case_body ~f:(loop (indent + 2)))
+           @ [ { indent = indent + 2; text = ";;" } ]))
+        @ [ { indent; text = "esac" } ]
+      | While { cond; body } ->
+        ({ indent; text = sprintf "while %s; do" (cond_to_string ~ctx cond) }
+         :: List.concat_map body ~f:(loop (indent + 1)))
+        @ [ { indent; text = "done" } ]
+      | Return value ->
+        [ { indent; text = sprintf "return %s" (value_to_string ~ctx value) } ]
+      | Comment comment ->
+        let comment_line_prefix = "# " in
+        let max_line_length =
+          Int.max (80 - String.length comment_line_prefix - (indent * 4)) 20
+        in
+        let lines =
+          split_string_on_with_max_line_length ~sep:' ' ~max_line_length comment
+        in
+        List.map lines ~f:(fun line ->
+          { indent; text = String.cat comment_line_prefix line })
+      | Noop -> [ { indent; text = ":" } ]
+      | Declare_local_variables vars ->
+        [ { indent
+          ; text =
+              String.concat
+                ~sep:" "
+                ("local"
+                 :: List.map vars ~f:(function
+                   | variable, None ->
+                     Local_variable.to_string ~style:ctx.local_variable_style variable
+                   | variable, Some value ->
+                     sprintf
+                       "%s=%s"
+                       (Local_variable.to_string ~style:ctx.local_variable_style variable)
+                       (value_to_string ~ctx value)))
+          }
+        ]
+      | Raw_with_local_variable (var, f) ->
+        let var_string =
+          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var)
+        in
+        [ { indent; text = f var_string } ]
+      | Raw_with_local_variable2 (var0, var1, f) ->
+        let var0_string =
+          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var0)
+        in
+        let var1_string =
+          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var1)
+        in
+        [ { indent; text = f var0_string var1_string } ]
+    in
+    loop indent
   ;;
 
   let remove_comments =
@@ -397,7 +477,11 @@ module Bash = struct
       | _ -> true)
   ;;
 
-  let global_named_value_to_lines ~global_symbol_prefix { name; value } =
+  let global_named_value_to_lines
+    ~global_symbol_prefix
+    ~local_variable_style
+    { name; value }
+    =
     match value with
     | Global_variable { initial_value } ->
       let name = Global_name.with_prefix name ~global_symbol_prefix in
@@ -415,7 +499,10 @@ module Bash = struct
       let body =
         List.concat_map
           body
-          ~f:(stmt_to_lines_with_indent ~global_symbol_prefix ~indent:1)
+          ~f:
+            (stmt_to_bash_lines_with_indent
+               ~ctx:{ global_symbol_prefix; local_variable_style }
+               ~indent:1)
       in
       ({ indent = 0; text = sprintf "%s() {" name } :: body)
       @ [ { indent = 0; text = "}" } ]
@@ -429,12 +516,23 @@ module Bash = struct
     |> String.concat ~sep:"\n"
   ;;
 
-  let global_named_value_to_string ~global_symbol_prefix global_named_value =
-    global_named_value_to_lines ~global_symbol_prefix global_named_value
+  let global_named_value_to_string
+    ~global_symbol_prefix
+    ~local_variable_style
+    global_named_value
+    =
+    global_named_value_to_lines
+      ~global_symbol_prefix
+      ~local_variable_style
+      global_named_value
     |> lines_to_string
   ;;
 
-  let stmt_to_string ~global_symbol_prefix stmt =
-    stmt_to_lines_with_indent ~indent:0 ~global_symbol_prefix stmt |> lines_to_string
+  let stmt_to_string ~global_symbol_prefix ~local_variable_style stmt =
+    stmt_to_bash_lines_with_indent
+      ~ctx:{ global_symbol_prefix; local_variable_style }
+      ~indent:0
+      stmt
+    |> lines_to_string
   ;;
 end

@@ -709,16 +709,20 @@ module Completion_config = struct
         [ "no-command-hash-in-function-names" ]
     and+ no_comments =
       flag ~desc:"Omit comments from the generated completion script." [ "no-comments" ]
+    and+ no_whitespace =
+      flag
+        ~desc:"Remove unnecessary whitespace from generated completion script."
+        [ "no-whitespace" ]
     and+ minify_global_names =
       flag
         ~desc:
           "Rename global variables and functions in completion script to be as short as \
            possible."
         [ "minify-global-names" ]
-    and+ no_whitespace =
+    and+ minify_local_variables =
       flag
-        ~desc:"Remove unnecessary whitespace from generated completion script."
-        [ "no-whitespace" ]
+        ~desc:"Use short names for local variables in generated bash script."
+        [ "minify-local-variables" ]
     in
     let program_name =
       match program_name with
@@ -736,7 +740,11 @@ module Completion_config = struct
       | None -> `Random
     in
     let options =
-      { Completion_.Options.no_comments; minify_global_names; no_whitespace }
+      { Completion_.Options.no_comments
+      ; no_whitespace
+      ; minify_global_names
+      ; minify_local_variables
+      }
     in
     { program_name
     ; program_exe_for_reentrant_query

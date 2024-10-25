@@ -38,11 +38,26 @@ module Global_named_value : sig
   val with_suffix : t -> f:(string -> string) -> t
 end
 
+module Local_variable : sig
+  type t
+
+  (** Create a local variable with a name that will appear in generated shell
+      scripts. Optionally specify a short name that will be used when
+      generating minified scripts. *)
+  val create : ?short_name:string -> string -> t
+end
+
 module Value : sig
   type t
 
   val literal : string -> t
   val global : Global_named_value.t -> t
+  val local_variable : Local_variable.t -> t
+
+  (** A positional argument to the current function or program *)
+  val argument : int -> t
+
+  val literal_with_local_variable : Local_variable.t -> f:(string -> string) -> t
 end
 
 module Cond : sig
@@ -82,6 +97,20 @@ module Stmt : sig
   val is_comment : t -> bool
   val noop : t
 
+  (** Helper for [declare_local_variables] *)
+  type local_variable_decl := Local_variable.t * Value.t option
+
+  val local_decl : Local_variable.t -> local_variable_decl
+  val local_init : Local_variable.t -> Value.t -> local_variable_decl
+  val declare_local_variables : local_variable_decl list -> t
+  val raw_with_local_variable : Local_variable.t -> f:(string -> string) -> t
+
+  val raw_with_local_variable2
+    :  Local_variable.t
+    -> Local_variable.t
+    -> f:(string -> string -> string)
+    -> t
+
   (** Call a given function on all blocks appearing within the statement. *)
   val transform_blocks_top_down : t list -> f:(t list -> t list) -> t list
 
@@ -92,8 +121,13 @@ end
 module Bash : sig
   val global_named_value_to_string
     :  global_symbol_prefix:string
+    -> local_variable_style:[ `Full | `Short ]
     -> Global_named_value.t
     -> string
 
-  val stmt_to_string : global_symbol_prefix:string -> Stmt.t -> string
+  val stmt_to_string
+    :  global_symbol_prefix:string
+    -> local_variable_style:[ `Full | `Short ]
+    -> Stmt.t
+    -> string
 end

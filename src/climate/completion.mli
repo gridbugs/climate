@@ -3,8 +3,9 @@ open! Import
 module Options : sig
   type t =
     { no_comments : bool
-    ; minify_global_names : bool
     ; no_whitespace : bool
+    ; minify_global_names : bool
+    ; minify_local_variables : bool
     }
 
   val default : t
