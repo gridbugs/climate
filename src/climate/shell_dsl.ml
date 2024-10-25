@@ -534,8 +534,7 @@ module Bash = struct
       @ [ { indent = 0; text = "}" } ]
   ;;
 
-  let lines_to_string lines =
-    let indent_size = 4 in
+  let lines_to_string ~indent_size lines =
     List.map lines ~f:(fun { indent; text } ->
       let indent_string = String.make (indent * indent_size) ' ' in
       String.cat indent_string text)
@@ -545,20 +544,21 @@ module Bash = struct
   let global_named_value_to_string
     ~global_symbol_prefix
     ~local_variable_style
+    ~indent_size
     global_named_value
     =
     global_named_value_to_lines
       ~global_symbol_prefix
       ~local_variable_style
       global_named_value
-    |> lines_to_string
+    |> lines_to_string ~indent_size
   ;;
 
-  let stmt_to_string ~global_symbol_prefix ~local_variable_style stmt =
+  let stmt_to_string ~global_symbol_prefix ~local_variable_style ~indent_size stmt =
     stmt_to_bash_lines_with_indent
       ~ctx:{ global_symbol_prefix; local_variable_style }
       ~indent:0
       stmt
-    |> lines_to_string
+    |> lines_to_string ~indent_size
   ;;
 end

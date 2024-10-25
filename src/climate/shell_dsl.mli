@@ -140,12 +140,14 @@ module Bash : sig
   val global_named_value_to_string
     :  global_symbol_prefix:string
     -> local_variable_style:[ `Full | `Short ]
+    -> indent_size:int
     -> Global_named_value.t
     -> string
 
   val stmt_to_string
     :  global_symbol_prefix:string
     -> local_variable_style:[ `Full | `Short ]
+    -> indent_size:int
     -> Stmt.t
     -> string
 end
