@@ -195,7 +195,7 @@ module Reentrant_query = struct
               command
               (Value.literal_with_local_variable query_index ~f:(fun query_index ->
                  sprintf
-                   "%s %s=%s -- $COMP_LINE"
+                   "%s %s=$%s -- $COMP_LINE"
                    program_exe
                    (Name.to_string_with_dashes print_reentrant_completions_name)
                    query_index))
@@ -203,7 +203,7 @@ module Reentrant_query = struct
       ; raw_with_local_variable2
           command
           current_word
-          ~f:(sprintf "COMPREPLY+=($(compgen -W \"$(eval \"%s\")\" -- \"%s\"))")
+          ~f:(sprintf "COMPREPLY+=($(compgen -W \"$(eval \"$%s\")\" -- \"$%s\"))")
       ]
   ;;
 end
@@ -241,6 +241,12 @@ module Subcommand_and_positional_arg_completion = struct
     ~command_hash_in_function_names
     =
     let open Stmt in
+    let prev_word_was_named_argument_with_value =
+      Local_variable.create "prev_word_was_named_argumen_with_value" ~short_name:"p"
+    in
+    let positional_argument_index =
+      Local_variable.create "positional_argument_index" ~short_name:"i"
+    in
     let base_function_name =
       function_name ~subcommand_path ~command_hash_in_function_names
     in
@@ -335,7 +341,10 @@ module Subcommand_and_positional_arg_completion = struct
                |> Nonempty_list.of_list
                |> Option.map ~f:(fun patterns ->
                  ( Case_pattern.union patterns
-                 , [ raw "prev_word_was_named_argument_with_value=1" ] ))
+                 , [ raw_with_local_variable
+                       prev_word_was_named_argument_with_value
+                       ~f:(sprintf "%s=1")
+                   ] ))
                |> Option.to_list
              in
              let subcommands =
@@ -360,22 +369,32 @@ module Subcommand_and_positional_arg_completion = struct
              @ subcommands
              @ [ ( Case_pattern.singleton "-*"
                  , [ comment "Ignore other words that look like arguments"
-                   ; raw "prev_word_was_named_argument_with_value=0"
+                   ; raw_with_local_variable
+                       prev_word_was_named_argument_with_value
+                       ~f:(sprintf "%s=0")
                    ] )
                ; ( Case_pattern.singleton "*"
                  , [ if_
-                       (Cond.test_raw
-                          "\"$prev_word_was_named_argument_with_value\" -eq 0")
-                       [ raw "positional_argument_index=$((positional_argument_index+1))"
+                       (Cond.test_raw_of_string_with_local_variable
+                          prev_word_was_named_argument_with_value
+                          ~f:(sprintf "\"$%s\" -eq 0"))
+                       [ raw_with_local_variable2
+                           positional_argument_index
+                           positional_argument_index
+                           ~f:(sprintf "%s=$((%s+1))")
                        ]
-                   ; raw "prev_word_was_named_argument_with_value=0"
+                   ; raw_with_local_variable
+                       prev_word_was_named_argument_with_value
+                       ~f:(sprintf "%s=0")
                    ] )
                ]
            in
            function_
              base_function_name
-             [ raw "local prev_word_was_named_argument_with_value=0"
-             ; raw "local positional_argument_index=0"
+             [ declare_local_variables
+                 [ local_init prev_word_was_named_argument_with_value (Value.literal "0")
+                 ; local_init positional_argument_index (Value.literal "0")
+                 ]
              ; while_
                  Cond.true_
                  [ if_
@@ -408,7 +427,7 @@ module Subcommand_and_positional_arg_completion = struct
                           call
                             complete_positional_args_function
                             [ Value.argument 2
-                            ; Value.literal "$positional_argument_index"
+                            ; Value.local_variable positional_argument_index
                             ]
                         | None ->
                           comment
@@ -436,34 +455,40 @@ module Subcommand_and_positional_arg_completion = struct
                      ; return (Value.global Status.done_)
                      ]
                      ~else_:
-                       [ comment
-                           "Avoid the variable name \"status\" as it's reserved by some \
-                            shells."
-                       ; raw "local current_word status_"
-                       ; raw_with_global_name
-                           ~f:(sprintf "current_word=$(%s)")
-                           (name Comp_words.Traverse.get_current)
-                       ; raw "status_=$?"
-                       ; if_
-                           (Cond.test_raw "\"$status_\" -ne 0")
-                           [ return (Value.literal "$status_") ]
-                       ; call Comp_words.Traverse.advance []
-                       ; if_
-                           (Cond.call Comp_words.Traverse.is_past_cursor [])
-                           [ comment
-                               "Bounds check to catch errors in the implementation of \
-                                the completion script"
-                           ; return (Value.global Status.error_word_index_past_cursor)
-                           ]
-                       ; if_
-                           (Cond.call Comp_words.Traverse.is_at_cursor [])
-                           [ comment
-                               "The parser has reached the word under the cursor. \
-                                Attempt to complete it and then exit."
-                           ; case (Value.literal "$current_word") named_arg_cases
-                           ]
-                       ; case (Value.literal "$current_word") subcommand_cases
-                       ]
+                       (let current_word =
+                          Local_variable.create "current_word" ~short_name:"w"
+                        in
+                        (* Avoid the variable name "status" as it's reserved by some shells. *)
+                        let status = Local_variable.create "status_" ~short_name:"s" in
+                        [ declare_local_variables
+                            [ local_decl current_word; local_decl status ]
+                        ; raw_with_local_variable_and_global_name
+                            current_word
+                            (name Comp_words.Traverse.get_current)
+                            ~f:(sprintf "%s=$(%s)")
+                        ; raw_with_local_variable status ~f:(sprintf "%s=$?")
+                        ; if_
+                            (Cond.test_raw_of_string_with_local_variable
+                               status
+                               ~f:(sprintf "\"$%s\" -ne 0"))
+                            [ return (Value.local_variable status) ]
+                        ; call Comp_words.Traverse.advance []
+                        ; if_
+                            (Cond.call Comp_words.Traverse.is_past_cursor [])
+                            [ comment
+                                "Bounds check to catch errors in the implementation of \
+                                 the completion script"
+                            ; return (Value.global Status.error_word_index_past_cursor)
+                            ]
+                        ; if_
+                            (Cond.call Comp_words.Traverse.is_at_cursor [])
+                            [ comment
+                                "The parser has reached the word under the cursor. \
+                                 Attempt to complete it and then exit."
+                            ; case (Value.local_variable current_word) named_arg_cases
+                            ]
+                        ; case (Value.local_variable current_word) subcommand_cases
+                        ])
                  ]
              ])
       ]

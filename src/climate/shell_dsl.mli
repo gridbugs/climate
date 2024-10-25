@@ -57,6 +57,7 @@ module Value : sig
   (** A positional argument to the current function or program *)
   val argument : int -> t
 
+  (** Calls [f] on the name of the local variable without the leading "$" *)
   val literal_with_local_variable : Local_variable.t -> f:(string -> string) -> t
 end
 
@@ -67,6 +68,12 @@ module Cond : sig
   val call : Global_named_value.t -> Value.t list -> t
   val test_raw : string -> t
   val test_raw_of_string_with_global_name : f:(string -> string) -> Global_name.t -> t
+
+  (** Call [f] on the name of the local variable without the leading "$" *)
+  val test_raw_of_string_with_local_variable
+    :  f:(string -> string)
+    -> Local_variable.t
+    -> t
 end
 
 module Case_pattern : sig
@@ -103,11 +110,22 @@ module Stmt : sig
   val local_decl : Local_variable.t -> local_variable_decl
   val local_init : Local_variable.t -> Value.t -> local_variable_decl
   val declare_local_variables : local_variable_decl list -> t
+
+  (** Calls [f] on the name of the local variable _without_ the leading "$" so
+      the variable can be assigned to. *)
   val raw_with_local_variable : Local_variable.t -> f:(string -> string) -> t
 
+  (** Calls [f] on the name of the local variables _without_ the leading "$" so
+      the variables can be assigned to. *)
   val raw_with_local_variable2
     :  Local_variable.t
     -> Local_variable.t
+    -> f:(string -> string -> string)
+    -> t
+
+  val raw_with_local_variable_and_global_name
+    :  Local_variable.t
+    -> Global_name.t
     -> f:(string -> string -> string)
     -> t
 

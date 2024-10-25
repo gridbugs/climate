@@ -59,6 +59,7 @@ and cond =
   | Call of function_call
   | Test_raw_cond of string
   | Test_raw_cond_of_string_with_global_name of string_with_global_name
+  | Test_raw_cond_of_string_with_local_variable of (Local_variable.t * (string -> string))
 
 and conditional_block =
   { cond : cond
@@ -93,6 +94,8 @@ and stmt =
   | Raw_with_local_variable of (Local_variable.t * (string -> string))
   | Raw_with_local_variable2 of
       (Local_variable.t * Local_variable.t * (string -> string -> string))
+  | Raw_with_local_variable_and_global_name of
+      (Local_variable.t * global_name * (string -> string -> string))
 
 module Global_name = struct
   type t = global_name
@@ -168,6 +171,10 @@ module Cond = struct
     Test_raw_cond_of_string_with_global_name { string_of_name = f; global_name }
   ;;
 
+  let test_raw_of_string_with_local_variable ~f v =
+    Test_raw_cond_of_string_with_local_variable (v, f)
+  ;;
+
   let map_global_name_suffix t ~f =
     match t with
     | Call { function_; args } ->
@@ -218,6 +225,11 @@ module Stmt = struct
   let declare_local_variables vars = Declare_local_variables vars
   let raw_with_local_variable var ~f = Raw_with_local_variable (var, f)
   let raw_with_local_variable2 var0 var1 ~f = Raw_with_local_variable2 (var0, var1, f)
+
+  let raw_with_local_variable_and_global_name local_variable global_name ~f =
+    Raw_with_local_variable_and_global_name (local_variable, global_name, f)
+  ;;
+
   let comment s = Comment s
   let noop = Noop
 
@@ -233,6 +245,9 @@ module Stmt = struct
     | Raw_with_global_name { string_of_name; global_name } ->
       Raw_with_global_name
         { string_of_name; global_name = Global_name.with_suffix global_name ~f }
+    | Raw_with_local_variable_and_global_name (local_variable, global_name, g) ->
+      Raw_with_local_variable_and_global_name
+        (local_variable, Global_name.with_suffix global_name ~f, g)
     | Cond cond -> Cond (Cond.map_global_name_suffix cond ~f)
     | If { if_ = { cond; body }; elifs; else_ } ->
       let cond = Cond.map_global_name_suffix cond ~f in
@@ -268,6 +283,7 @@ module Stmt = struct
       match t with
       | Raw _
       | Raw_with_global_name _
+      | Raw_with_local_variable_and_global_name _
       | Cond _
       | Return _
       | Comment _
@@ -339,7 +355,7 @@ module Bash = struct
     | Argument index -> sprintf "\"$%d\"" index
     | Literal_with_local_variable (v, f) ->
       let variable_string =
-        sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style v)
+        sprintf "%s" (Local_variable.to_string ~style:ctx.local_variable_style v)
       in
       sprintf "\"%s\"" (f variable_string)
 
@@ -364,6 +380,9 @@ module Bash = struct
           string_with_global_name
       in
       sprintf "[ %s ]" s
+    | Test_raw_cond_of_string_with_local_variable (v, f) ->
+      let s = Local_variable.to_string ~style:ctx.local_variable_style v in
+      sprintf "[ %s ]" (f s)
   ;;
 
   type line =
@@ -397,6 +416,19 @@ module Bash = struct
             string_with_global_name
         in
         [ { text; indent } ]
+      | Raw_with_local_variable_and_global_name (local_variable, global_name, f) ->
+        let text =
+          let global_name_string =
+            Global_name.with_prefix
+              ~global_symbol_prefix:ctx.global_symbol_prefix
+              global_name
+          in
+          let local_variable_string =
+            Local_variable.to_string ~style:ctx.local_variable_style local_variable
+          in
+          f local_variable_string global_name_string
+        in
+        [ { indent; text } ]
       | Cond c ->
         let text = cond_to_string ~ctx c in
         [ { text; indent } ]
@@ -455,17 +487,11 @@ module Bash = struct
           }
         ]
       | Raw_with_local_variable (var, f) ->
-        let var_string =
-          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var)
-        in
+        let var_string = Local_variable.to_string ~style:ctx.local_variable_style var in
         [ { indent; text = f var_string } ]
       | Raw_with_local_variable2 (var0, var1, f) ->
-        let var0_string =
-          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var0)
-        in
-        let var1_string =
-          sprintf "$%s" (Local_variable.to_string ~style:ctx.local_variable_style var1)
-        in
+        let var0_string = Local_variable.to_string ~style:ctx.local_variable_style var0 in
+        let var1_string = Local_variable.to_string ~style:ctx.local_variable_style var1 in
         [ { indent; text = f var0_string var1_string } ]
     in
     loop indent
