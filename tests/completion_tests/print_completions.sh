@@ -14,6 +14,10 @@
 
 set -u
 
+# Fake compopt function as the real compopt would complain about being called
+# outside of the context of a completion function otherwise.
+compopt() { true; }
+
 # Print the completion suggestions of a given completion function on
 # some input and a cursor position.
 #

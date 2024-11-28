@@ -453,7 +453,7 @@ module Arg_parser = struct
 
   let flag = flag_gen ~allow_many:false
 
-  let pos_single_gen i conv ~value_name ~required ~completion =
+  let pos_single_gen i conv ~desc ~value_name ~required ~completion =
     let i =
       match Nonnegative_int.of_int i with
       | Some _ -> i
@@ -465,7 +465,8 @@ module Arg_parser = struct
              i
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required
-             ~completion:(conv_untyped_completion_opt_with_default conv completion))
+             ~completion:(conv_untyped_completion_opt_with_default conv completion)
+             ~desc)
     ; arg_compute =
         (fun context ->
           Raw_arg_table.get_pos context.raw_arg_table i
@@ -478,32 +479,33 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_opt ?value_name ?completion i conv =
-    pos_single_gen i conv ~value_name ~required:false ~completion
+  let pos_opt ?desc ?value_name ?completion i conv =
+    pos_single_gen i conv ~desc ~value_name ~required:false ~completion
   ;;
 
-  let pos_with_default ?value_name ?completion i conv ~default =
-    pos_opt ?value_name ?completion i conv
+  let pos_with_default ?desc ?value_name ?completion i conv ~default =
+    pos_opt ?desc ?value_name ?completion i conv
     |> map ~f:(function
       | Some x -> x
       | None -> default)
   ;;
 
-  let pos_req ?value_name ?completion i conv =
-    pos_single_gen i conv ~value_name ~required:true ~completion
+  let pos_req ?desc ?value_name ?completion i conv =
+    pos_single_gen i conv ~desc ~value_name ~required:true ~completion
     |> map ~f:(function
       | Some x -> x
       | None -> raise Parse_error.(E (Pos_req_missing i)))
   ;;
 
-  let pos_left_gen i conv ~value_name ~required ~completion =
+  let pos_left_gen i conv ~desc ~value_name ~required ~completion =
     { arg_spec =
         Spec.create_positional
           (Spec.Positional.all_below_exclusive
              i
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required
-             ~completion:(conv_untyped_completion_opt_with_default conv completion))
+             ~completion:(conv_untyped_completion_opt_with_default conv completion)
+             ~desc)
     ; arg_compute =
         (fun context ->
           let left, _ =
@@ -518,17 +520,18 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_left ?value_name ?completion i conv =
-    pos_left_gen i conv ~value_name ~required:false ~completion
+  let pos_left ?desc ?value_name ?completion i conv =
+    pos_left_gen i conv ~desc ~value_name ~required:false ~completion
   ;;
 
-  let pos_right_inclusive ?value_name ?completion i_inclusive conv =
+  let pos_right_inclusive ?desc ?value_name ?completion i_inclusive conv =
     { arg_spec =
         Spec.create_positional
           (Spec.Positional.all_above_inclusive
              i_inclusive
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
-             ~completion:(conv_untyped_completion_opt_with_default conv completion))
+             ~completion:(conv_untyped_completion_opt_with_default conv completion)
+             ~desc)
     ; arg_compute =
         (fun context ->
           let _, right =
@@ -543,12 +546,12 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_right ?value_name ?completion i_exclusive conv =
-    pos_right_inclusive ?value_name ?completion (i_exclusive + 1) conv
+  let pos_right ?desc ?value_name ?completion i_exclusive conv =
+    pos_right_inclusive ?desc ?value_name ?completion (i_exclusive + 1) conv
   ;;
 
-  let pos_all ?value_name ?completion conv =
-    pos_right_inclusive ?value_name ?completion 0 conv
+  let pos_all ?desc ?value_name ?completion conv =
+    pos_right_inclusive ?desc ?value_name ?completion 0 conv
   ;;
 
   let validate t = Spec.validate t.arg_spec
@@ -580,6 +583,8 @@ module Arg_parser = struct
       Format.fprintf ppf "%s" description;
       Format.pp_print_newline ppf ();
       Format.pp_print_newline ppf ());
+    if not (Spec.Positional.is_empty arg_spec.positional)
+    then Spec.positional_help ppf arg_spec;
     if not (Spec.Named.is_empty arg_spec.named) then Spec.named_help ppf arg_spec;
     if not (List.is_empty child_subcommands)
     then (

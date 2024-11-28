@@ -27,9 +27,9 @@ let checkout =
 
 let commit =
   let open Arg_parser in
-  let+ _amend = flag [ "amend"; "a" ]
+  let+ _amend = flag [ "amend"; "a" ] ~desc:"Ammend a commit"
   and+ _branch = named_opt [ "b"; "branch" ] branch_conv
-  and+ _message = named_opt [ "m"; "message" ] string
+  and+ _message = named_opt [ "m"; "message" ] string ~desc:"The commit message"
   and+ _files = pos_all file in
   ()
 ;;
@@ -55,10 +55,10 @@ let () =
   let open Command in
   group
     ~desc:"Fake version control"
-    [ subcommand "config" (singleton Arg_parser.unit)
-    ; subcommand "checkout" (singleton checkout)
-    ; subcommand "commit" (singleton commit)
-    ; subcommand "log" (singleton log)
+    [ subcommand "config" (singleton Arg_parser.unit ~desc:"Configure the tool.")
+    ; subcommand "checkout" (singleton checkout ~desc:"Check out a revision.")
+    ; subcommand "commit" (singleton commit ~desc:"Commit your changes.")
+    ; subcommand "log" (singleton log ~desc:"List recent commits.")
     ; subcommand
         "bisect"
         (group

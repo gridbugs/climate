@@ -50,6 +50,8 @@ module Positional : sig
       spec. *)
   val arg_count : t -> [ `Limited of int | `Unlimited ]
 
+  val is_empty : t -> bool
+
   (** Create a spec with a single positional argument at a given
       index. *)
   val single_at_index
@@ -57,6 +59,7 @@ module Positional : sig
     -> value_name:string
     -> required:bool
     -> completion:untyped_completion_hint option
+    -> desc:string option
     -> t
 
   (** Create a spec with an unlimited number of positional arguments
@@ -66,6 +69,7 @@ module Positional : sig
     :  int
     -> value_name:string
     -> completion:untyped_completion_hint option
+    -> desc:string option
     -> t
 
   (** Create a spec with positional arguments from index 0 up to but
@@ -75,6 +79,7 @@ module Positional : sig
     -> value_name:string
     -> required:bool
     -> completion:untyped_completion_hint option
+    -> desc:string option
     -> t
 end
 
@@ -106,6 +111,7 @@ val create_flag : Name.t Nonempty_list.t -> desc:string option -> hidden:bool ->
 
 val usage : Format.formatter -> t -> unit
 val named_help : Format.formatter -> t -> unit
+val positional_help : Format.formatter -> t -> unit
 
 val to_completion_parser_spec
   :  t

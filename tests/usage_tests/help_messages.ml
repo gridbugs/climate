@@ -113,7 +113,7 @@ let%expect_test "arguments" =
         ~desc:"description of bar"
         (string_enum ~default_value_name:"ABC" [ "a"; "b"; "c" ])
     and+ _ = named_opt [ "c" ] int
-    and+ _ = pos_req 1 string ~value_name:"ARG2"
+    and+ _ = pos_req 1 string ~value_name:"ARG2" ~desc:"The second argument"
     and+ _ = pos_req 0 (string_enum [ "x"; "y"; "z" ]) ~value_name:"XYZ" in
     ()
   in
@@ -122,6 +122,10 @@ let%expect_test "arguments" =
   [%expect
     {|
     Usage: foo.exe [OPTIONS] <XYZ> <ARG2>
+
+    Arguments:
+     <XYZ>
+     <ARG2>   The second argument
 
     Options:
      --foo, -f <FILE>   description of foo
