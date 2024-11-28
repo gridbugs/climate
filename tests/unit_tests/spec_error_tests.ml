@@ -6,7 +6,7 @@ let check f =
     let _ = Command.singleton (f ()) in
     ()
   with
-  | Spec_error.E _ -> ()
+  | Spec_error.E e -> Printf.eprintf "%s" (Spec_error.to_string e)
 ;;
 
 let%expect_test "duplicate argument name" =

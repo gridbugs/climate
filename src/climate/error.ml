@@ -180,6 +180,5 @@ module Spec_error = struct
 end
 
 let spec_error error =
-  Printf.eprintf "%s" (Spec_error.to_string error);
   raise (Spec_error.E error)
 ;;
