@@ -174,7 +174,8 @@ module Arg_parser : sig
   (** [pos_opt i conv] declares an optional anonymous positional
       argument at position [i] (starting at 0). *)
   val pos_opt
-    :  ?value_name:string
+    :  ?desc:string
+    -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
     -> 'a conv
@@ -183,7 +184,8 @@ module Arg_parser : sig
   (** [pos_with_default i conv] declares an optional anonymous positional
       argument with a default value at position [i] (starting at 0). *)
   val pos_with_default
-    :  ?value_name:string
+    :  ?desc:string
+    -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
     -> 'a conv
@@ -193,19 +195,26 @@ module Arg_parser : sig
   (** [pos_req i conv] declares a required anonymous positional
       argument at position [i] (starting at 0). *)
   val pos_req
-    :  ?value_name:string
+    :  ?desc:string
+    -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
     -> 'a conv
     -> 'a t
 
   (** Parses all positional arguments. *)
-  val pos_all : ?value_name:string -> ?completion:'a Completion.t -> 'a conv -> 'a list t
+  val pos_all
+    :  ?desc:string
+    -> ?value_name:string
+    -> ?completion:'a Completion.t
+    -> 'a conv
+    -> 'a list t
 
   (** [pos_left i conv] parses all positional arguments at positions less than
       i. *)
   val pos_left
-    :  ?value_name:string
+    :  ?desc:string
+    -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
     -> 'a conv
@@ -214,7 +223,8 @@ module Arg_parser : sig
   (** [pos_right i conv] parses all positional arguments at positions greater
       than i. *)
   val pos_right
-    :  ?value_name:string
+    :  ?desc:string
+    -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
     -> 'a conv
