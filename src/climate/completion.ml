@@ -156,6 +156,12 @@ module Add_reply = struct
           "Takes the word under the cursor (just the portion up to the cursor) and \
            completes with files in the current directory."
       ; raw "COMPREPLY+=($(compgen -A file -- \"$1\"))"
+      ; comment
+          "Tell the shell that completions will be filenames. This allows for ergonomic \
+           improvements such as appending a slash to directories and omitting the space \
+           after completions so completion of paths can continue if the user presses tab \
+           again."
+      ; raw "compopt -o filenames"
       ]
   ;;
 

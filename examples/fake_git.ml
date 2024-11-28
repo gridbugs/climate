@@ -29,7 +29,8 @@ let commit =
   let open Arg_parser in
   let+ _amend = flag [ "amend"; "a" ]
   and+ _branch = named_opt [ "b"; "branch" ] branch_conv
-  and+ _message = named_opt [ "m"; "message" ] string in
+  and+ _message = named_opt [ "m"; "message" ] string
+  and+ _files = pos_all file in
   ()
 ;;
 
