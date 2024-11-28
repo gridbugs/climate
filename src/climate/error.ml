@@ -179,6 +179,4 @@ module Spec_error = struct
   ;;
 end
 
-let spec_error error =
-  raise (Spec_error.E error)
-;;
+let spec_error error = raise (Spec_error.E error)
