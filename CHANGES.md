@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Improve filename completion (#3)
 - Stop printing spec errors (#2, fixes #1)
 
 ## 0.2.0
