@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Color in help messages (#6)
 - Improvements to formatting of help messages (#5)
 - Allow documentation for positional args (#4)
 - Improve filename completion (#3)
