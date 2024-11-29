@@ -588,7 +588,7 @@ module Arg_parser = struct
   ;;
 
   let pp_help ppf arg_spec command_line ~desc ~child_subcommands =
-    Help.pp ppf (help arg_spec command_line ~desc ~child_subcommands)
+    Help.pp Help.Style.default ppf (help arg_spec command_line ~desc ~child_subcommands)
   ;;
 
   let help_spec =

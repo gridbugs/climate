@@ -12,10 +12,10 @@ let%expect_test "empty spec" =
   run (unit_command ()) [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
     |}]
 ;;
 
@@ -26,30 +26,28 @@ let%expect_test "subcommands" =
   run command [];
   [%expect
     {|
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      foo
-      bar
+    [33;1mCommands:[0m
+      [32;1mfoo [0m
+      [32;1mbar [0m
     |}];
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      foo
-      bar
+    [33;1mCommands:[0m
+      [32;1mfoo [0m
+      [32;1mbar [0m
     |}]
 ;;
 
@@ -66,32 +64,30 @@ let%expect_test "descriptions" =
     {|
     program description
 
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      foo  description of subcommand foo
-      bar  description of subcommand bar
+    [33;1mCommands:[0m
+      [32;1mfoo [0m description of subcommand foo
+      [32;1mbar [0m description of subcommand bar
     |}];
   run command [ "--help" ];
   [%expect
     {|
     program description
 
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      foo  description of subcommand foo
-      bar  description of subcommand bar
+    [33;1mCommands:[0m
+      [32;1mfoo [0m description of subcommand foo
+      [32;1mbar [0m description of subcommand bar
     |}];
   run command [ "foo" ];
   [%expect {||}];
@@ -100,10 +96,10 @@ let%expect_test "descriptions" =
     {|
     description of subcommand foo
 
-    Usage: foo.exe foo [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe foo [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
     |}]
 ;;
 
@@ -125,18 +121,17 @@ let%expect_test "arguments" =
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS] <XYZ> <ARG2>
+    [33;1mUsage: [0m[32;1mfoo.exe [OPTIONS] <XYZ> <ARG2>[0m
 
-    Arguments:
-      <XYZ>
-      <ARG2>  The second argument
+    [33;1mArguments:[0m
+      [32;1m<XYZ> [0m
+      [32;1m<ARG2> [0m The second argument
 
-
-    Options:
-      -f, --foo <FILE>  description of foo
-          --bar <ABC>   description of bar
-      -c <INT>
-      -h, --help        Print help
+    [33;1mOptions:[0m
+      [32;1m-f, --foo <FILE> [0m description of foo
+      [32;1m    --bar <ABC> [0m  description of bar
+      [32;1m-c <INT> [0m
+      [32;1m-h, --help [0m       Print help
     |}]
 ;;
 
@@ -170,54 +165,52 @@ let%expect_test "arguments and subcommands" =
     {|
     Fake version control software
 
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      log     List recent commits
-      commit  Make a new commit
+    [33;1mCommands:[0m
+      [32;1mlog [0m    List recent commits
+      [32;1mcommit [0m Make a new commit
     |}];
   run command [ "--help" ];
   [%expect
     {|
     Fake version control software
 
-    Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe [COMMAND]
+           foo.exe [OPTIONS][0m
 
-    Options:
-      -h, --help  Print help
+    [33;1mOptions:[0m
+      [32;1m-h, --help [0m Print help
 
-
-    Commands:
-      log     List recent commits
-      commit  Make a new commit
+    [33;1mCommands:[0m
+      [32;1mlog [0m    List recent commits
+      [32;1mcommit [0m Make a new commit
     |}];
   run command [ "log"; "--help" ];
   [%expect
     {|
     List recent commits
 
-    Usage: foo.exe log [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe log [OPTIONS][0m
 
-    Options:
-      -p, --pretty <VALUE>
-      -h, --help            Print help
+    [33;1mOptions:[0m
+      [32;1m-p, --pretty <VALUE> [0m
+      [32;1m-h, --help [0m           Print help
     |}];
   run command [ "commit"; "--help" ];
   [%expect
     {|
     Make a new commit
 
-    Usage: foo.exe commit [OPTIONS]
+    [33;1mUsage: [0m[32;1mfoo.exe commit [OPTIONS][0m
 
-    Options:
-      -a, --amend
-      -m, --message <STRING>
-      -h, --help              Print help
+    [33;1mOptions:[0m
+      [32;1m-a, --amend [0m
+      [32;1m-m, --message <STRING> [0m
+      [32;1m-h, --help [0m             Print help
     |}]
 ;;

@@ -1,5 +1,14 @@
 open Import
 
+module Style : sig
+  type t =
+    { name : Ansi_style.t
+    ; heading : Ansi_style.t
+    }
+
+  val default : t
+end
+
 type 'name entry =
   { name : 'name
   ; desc : string option
@@ -60,4 +69,4 @@ type t =
   ; sections : Sections.t
   }
 
-val pp : Format.formatter -> t -> unit
+val pp : Style.t -> Format.formatter -> t -> unit

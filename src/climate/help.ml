@@ -1,5 +1,18 @@
 open Import
 
+module Style = struct
+  type t =
+    { name : Ansi_style.t
+    ; heading : Ansi_style.t
+    }
+
+  let default =
+    { name = { Ansi_style.default with color = Some `Green; bold = true }
+    ; heading = { Ansi_style.default with color = Some `Yellow; bold = true }
+    }
+  ;;
+end
+
 type 'name entry =
   { name : 'name
   ; desc : string option
@@ -111,6 +124,7 @@ module Print = struct
     ;;
 
     let pp_padded
+      (style : Style.t)
       ppf
       ~at_least_one_left_name
       ~right_names_left_padding
@@ -121,7 +135,8 @@ module Print = struct
       let names_value_string =
         names_value_padded_to_string ~at_least_one_left_name ~right_names_left_padding t
       in
-      Format.pp_print_string ppf names_value_string;
+      Ansi_style.pp_with_style style.name ppf ~f:(fun ppf ->
+        Format.pp_print_string ppf names_value_string);
       pp_print_spaces ppf 1;
       Option.iter t.desc ~f:(fun desc ->
         let padding = desc_left_padding - String.length names_value_string in
@@ -155,7 +170,7 @@ module Print = struct
       |> Option.value ~default:0
     ;;
 
-    let pp ppf t =
+    let pp (style : Style.t) ppf t =
       if List.is_empty t.entries
       then ()
       else (
@@ -163,8 +178,9 @@ module Print = struct
           List.exists t.entries ~f:(fun { Entry.names; _ } ->
             not (List.is_empty names.left))
         in
-        pp_print_newlines ppf 2;
-        Format.pp_print_string ppf t.heading;
+        pp_print_newlines ppf 1;
+        Ansi_style.pp_with_style style.heading ppf ~f:(fun ppf ->
+          Format.pp_print_string ppf t.heading);
         pp_print_newlines ppf 1;
         let right_names_left_padding = max_left_length t in
         let desc_left_padding =
@@ -172,6 +188,7 @@ module Print = struct
         in
         List.iter t.entries ~f:(fun entry ->
           Entry.pp_padded
+            style
             ppf
             ~at_least_one_left_name
             ~right_names_left_padding
@@ -220,7 +237,7 @@ module Positional_args = struct
       pp_print_elipsis ppf ())
   ;;
 
-  let pp ppf t = Print.Section.pp ppf (to_print_section t)
+  let pp style ppf t = Print.Section.pp style ppf (to_print_section t)
 end
 
 module Named_args = struct
@@ -249,7 +266,7 @@ module Named_args = struct
     }
   ;;
 
-  let pp ppf t = Print.Section.pp ppf (to_print_section t)
+  let pp style ppf t = Print.Section.pp style ppf (to_print_section t)
 end
 
 module Subcommands = struct
@@ -269,7 +286,7 @@ module Subcommands = struct
     }
   ;;
 
-  let pp ppf t = Print.Section.pp ppf (to_print_section t)
+  let pp style ppf t = Print.Section.pp style ppf (to_print_section t)
 end
 
 module Arg_sections = struct
@@ -290,10 +307,10 @@ module Sections = struct
     ; subcommands : Subcommands.t
     }
 
-  let pp ppf t =
-    Positional_args.pp ppf t.arg_sections.positional_args;
-    Named_args.pp ppf t.arg_sections.named_args;
-    Subcommands.pp ppf t.subcommands
+  let pp style ppf t =
+    Positional_args.pp style ppf t.arg_sections.positional_args;
+    Named_args.pp style ppf t.arg_sections.named_args;
+    Subcommands.pp style ppf t.subcommands
   ;;
 end
 
@@ -309,23 +326,25 @@ let pp_command_base ppf t =
   List.iter t.subcommand ~f:(Format.fprintf ppf " %s")
 ;;
 
-let pp_usage ppf t =
-  Format.pp_print_string ppf "Usage: ";
-  if not (List.is_empty t.sections.subcommands)
-  then (
+let pp_usage (style : Style.t) ppf t =
+  Ansi_style.pp_with_style style.heading ppf ~f:(fun ppf ->
+    Format.pp_print_string ppf "Usage: ");
+  Ansi_style.pp_with_style style.name ppf ~f:(fun ppf ->
+    if not (List.is_empty t.sections.subcommands)
+    then (
+      pp_command_base ppf t;
+      Format.pp_print_string ppf " [COMMAND]";
+      Format.pp_print_newline ppf ();
+      Format.pp_print_string ppf "       ");
     pp_command_base ppf t;
-    Format.pp_print_string ppf " [COMMAND]";
-    Format.pp_print_newline ppf ();
-    Format.pp_print_string ppf "       ");
-  pp_command_base ppf t;
-  Arg_sections.pp_usage_args ppf t.sections.arg_sections
+    Arg_sections.pp_usage_args ppf t.sections.arg_sections)
 ;;
 
-let pp ppf t =
+let pp style ppf t =
   Option.iter t.desc ~f:(fun desc ->
     Format.pp_print_string ppf desc;
     pp_print_newlines ppf 2);
-  pp_usage ppf t;
-  Sections.pp ppf t.sections;
-  pp_print_newlines ppf 1
+  pp_usage style ppf t;
+  pp_print_newlines ppf 1;
+  Sections.pp style ppf t.sections
 ;;
