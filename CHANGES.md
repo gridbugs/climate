@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Improvements to formatting of help messages (#5)
 - Allow documentation for positional args (#4)
 - Improve filename completion (#3)
 - Stop printing spec errors (#2, fixes #1)

@@ -15,6 +15,7 @@ module Named = struct
       ; desc : string option
       ; completion : untyped_completion_hint option
       ; hidden : bool
+      ; repeated : bool
       }
 
     let has_param t =
@@ -23,7 +24,7 @@ module Named = struct
       | `Yes_with_value_name _ -> true
     ;;
 
-    let flag names ~desc ~hidden =
+    let flag names ~desc ~hidden ~repeated =
       { names
       ; has_param = `No
       ; default_string = None
@@ -31,17 +32,8 @@ module Named = struct
       ; desc
       ; completion = None
       ; hidden
+      ; repeated
       }
-    ;;
-
-    let long_name { names; _ } =
-      List.find_opt (Nonempty_list.to_list names) ~f:Name.is_long
-    ;;
-
-    let choose_name_long_if_possible t =
-      match long_name t with
-      | Some name -> name
-      | None -> Nonempty_list.hd t.names
     ;;
 
     let to_completion_named_arg t =
@@ -50,12 +42,29 @@ module Named = struct
       ; hint = t.completion
       }
     ;;
+
+    let help_entry t =
+      if t.hidden
+      then None
+      else (
+        let value =
+          match t.has_param with
+          | `No -> None
+          | `Yes_with_value_name name -> Some { Help.Value.name; required = true }
+        in
+        let name = { Help.Named_args.names = t.names; value; repeated = t.repeated } in
+        Some { Help.name; desc = t.desc })
+    ;;
   end
 
   type t = { infos : Info.t list }
 
   let empty = { infos = [] }
   let is_empty { infos } = List.is_empty infos
+
+  let help_entries { infos } : Help.Named_args.t =
+    List.rev infos |> List.filter_map ~f:Info.help_entry
+  ;;
 
   let get_info_by_name { infos } name =
     List.find_opt infos ~f:(fun (info : Info.t) ->
@@ -86,12 +95,6 @@ module Named = struct
     | Some help_name -> Error (Spec_error.Name_reserved_for_help help_name)
   ;;
 
-  let all_required { infos } = List.filter infos ~f:(fun { Info.required; _ } -> required)
-
-  let all_optional { infos } =
-    List.filter infos ~f:(fun { Info.required; _ } -> not required)
-  ;;
-
   let to_completion_named_args { infos } = List.map infos ~f:Info.to_completion_named_arg
 end
 
@@ -120,10 +123,23 @@ module Positional = struct
     Option.is_none all_above_inclusive && Int.Map.is_empty others_by_index
   ;;
 
-  let iter ~f { all_above_inclusive; others_by_index } =
-    Int.Map.iter others_by_index ~f:(fun ~key:_index ~data:arg -> f arg);
-    Option.iter all_above_inclusive ~f:(fun all_above_inclusive ->
-      f all_above_inclusive.arg)
+  let help_entry_of_single_arg { required; value_name; desc; _ }
+    : Help.Positional_args.entry
+    =
+    let name = { Help.Value.name = value_name; required } in
+    { Help.name; desc }
+  ;;
+
+  let help_entries { all_above_inclusive; others_by_index } =
+    let fixed =
+      Int.Map.to_list others_by_index
+      |> List.map ~f:snd
+      |> List.map ~f:help_entry_of_single_arg
+    in
+    let repeated =
+      Option.map all_above_inclusive ~f:(fun { arg; _ } -> help_entry_of_single_arg arg)
+    in
+    { Help.Positional_args.fixed; repeated }
   ;;
 
   let check_value_names index value_name1 value_name2 =
@@ -253,13 +269,6 @@ module Positional = struct
     | Some _ -> `Unlimited
     | None -> `Limited (Int.Map.cardinal others_by_index)
   ;;
-
-  let all_required_value_names { others_by_index; _ } =
-    Int.Map.to_seq others_by_index
-    |> Seq.filter_map (fun (_, { required; value_name; _ }) ->
-      if required then Some value_name else None)
-    |> List.of_seq
-  ;;
 end
 
 type t =
@@ -286,64 +295,14 @@ let create_named info =
   { named; positional = Positional.empty }
 ;;
 
-let create_flag names ~desc ~hidden = create_named (Named.Info.flag names ~desc ~hidden)
-
-let usage ppf { named; positional } =
-  let named_optional = Named.all_optional named in
-  if not (List.is_empty named_optional) then Format.pp_print_string ppf " [OPTIONS]";
-  let named_required = Named.all_required named in
-  List.iter named_required ~f:(fun (info : Named.Info.t) ->
-    if not info.hidden
-    then (
-      match info.has_param with
-      | `No ->
-        (* there should be no required arguments with no parameters *)
-        ()
-      | `Yes_with_value_name value_name ->
-        let name = Named.Info.choose_name_long_if_possible info in
-        if Name.is_long name
-        then Format.fprintf ppf " %s=<%s>" (Name.to_string_with_dashes name) value_name
-        else Format.fprintf ppf " %s<%s>" (Name.to_string_with_dashes name) value_name));
-  Positional.all_required_value_names positional
-  |> List.iter ~f:(fun value_name -> Format.fprintf ppf " <%s>" value_name);
-  match positional.all_above_inclusive with
-  | Some { arg = { value_name; _ }; _ } -> Format.fprintf ppf " [%s]..." value_name
-  | None -> ()
+let create_flag names ~desc ~hidden ~repeated =
+  create_named (Named.Info.flag names ~desc ~hidden ~repeated)
 ;;
 
-let positional_help ppf { positional; _ } =
-  if not (Positional.is_empty positional) then Format.pp_print_string ppf "Arguments:";
-  Format.pp_print_newline ppf ();
-  Positional.iter positional ~f:(fun { Positional.required; value_name; desc; _ } ->
-    if required
-    then Format.fprintf ppf " <%s>" value_name
-    else Format.fprintf ppf " [%s]..." value_name;
-    Option.iter desc ~f:(fun desc -> Format.fprintf ppf "   %s" desc);
-    Format.pp_print_newline ppf ());
-  Format.pp_print_newline ppf ()
-;;
-
-let named_help ppf { named; _ } =
-  if not (List.is_empty named.infos) then Format.pp_print_string ppf "Options:";
-  Format.pp_print_newline ppf ();
-  List.iter (List.rev named.infos) ~f:(fun (info : Named.Info.t) ->
-    if not info.hidden
-    then (
-      Format.pp_print_string ppf " ";
-      Format.pp_print_list
-        ~pp_sep:(fun ppf () -> Format.pp_print_string ppf ", ")
-        (fun ppf name -> Format.pp_print_string ppf (Name.to_string_with_dashes name))
-        ppf
-        (Nonempty_list.to_list info.names);
-      (match info.has_param with
-       | `No -> ()
-       | `Yes_with_value_name value_name ->
-         Format.pp_print_string ppf " ";
-         Format.fprintf ppf "<%s>" value_name);
-      (match info.desc with
-       | None -> ()
-       | Some desc -> Format.fprintf ppf "   %s" desc);
-      Format.pp_print_newline ppf ()))
+let help_sections { named; positional } =
+  { Help.Arg_sections.named_args = Named.help_entries named
+  ; positional_args = Positional.help_entries positional
+  }
 ;;
 
 let to_completion_parser_spec { named; positional } =

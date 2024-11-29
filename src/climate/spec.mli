@@ -22,6 +22,7 @@ module Named : sig
       (** Completion hint for this argument *)
       ; hidden : bool (** If true, then this argument doesn't show up
                           in help messages. *)
+      ; repeated : bool (** If true, this argument can be passed multiple times *)
       }
 
     (** Returns true iff the argument accepts a value *)
@@ -107,11 +108,14 @@ val create_named : Named.Info.t -> t
 
 (** Helper for creating a spec with a single named argument which
     doesn't take a value (ie. a flag). *)
-val create_flag : Name.t Nonempty_list.t -> desc:string option -> hidden:bool -> t
+val create_flag
+  :  Name.t Nonempty_list.t
+  -> desc:string option
+  -> hidden:bool
+  -> repeated:bool
+  -> t
 
-val usage : Format.formatter -> t -> unit
-val named_help : Format.formatter -> t -> unit
-val positional_help : Format.formatter -> t -> unit
+val help_sections : t -> Help.Arg_sections.t
 
 val to_completion_parser_spec
   :  t

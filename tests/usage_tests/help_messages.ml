@@ -15,7 +15,7 @@ let%expect_test "empty spec" =
     Usage: foo.exe [OPTIONS]
 
     Options:
-     --help, -h   Print help
+      -h, --help  Print help
     |}]
 ;;
 
@@ -26,28 +26,30 @@ let%expect_test "subcommands" =
   run command [];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
     Options:
-     --help, -h   Print help
+      -h, --help  Print help
 
-    Subcommands:
-     foo
-     bar
+
+    Commands:
+      foo
+      bar
     |}];
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
     Options:
-     --help, -h   Print help
+      -h, --help  Print help
 
-    Subcommands:
-     foo
-     bar
+
+    Commands:
+      foo
+      bar
     |}]
 ;;
 
@@ -62,44 +64,46 @@ let%expect_test "descriptions" =
   run command [];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
-
     program description
 
-    Options:
-     --help, -h   Print help
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
-    Subcommands:
-     foo  description of subcommand foo
-     bar  description of subcommand bar
+    Options:
+      -h, --help  Print help
+
+
+    Commands:
+      foo  description of subcommand foo
+      bar  description of subcommand bar
     |}];
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
-
     program description
 
-    Options:
-     --help, -h   Print help
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
-    Subcommands:
-     foo  description of subcommand foo
-     bar  description of subcommand bar
+    Options:
+      -h, --help  Print help
+
+
+    Commands:
+      foo  description of subcommand foo
+      bar  description of subcommand bar
     |}];
   run command [ "foo" ];
   [%expect {||}];
   run command [ "foo"; "--help" ];
   [%expect
     {|
-    Usage: foo.exe foo [OPTIONS]
-
     description of subcommand foo
 
+    Usage: foo.exe foo [OPTIONS]
+
     Options:
-     --help, -h   Print help
+      -h, --help  Print help
     |}]
 ;;
 
@@ -124,14 +128,15 @@ let%expect_test "arguments" =
     Usage: foo.exe [OPTIONS] <XYZ> <ARG2>
 
     Arguments:
-     <XYZ>
-     <ARG2>   The second argument
+      <XYZ>
+      <ARG2>  The second argument
+
 
     Options:
-     --foo, -f <FILE>   description of foo
-     --bar <ABC>   description of bar
-     -c <INT>
-     --help, -h   Print help
+      -f, --foo <FILE>  description of foo
+          --bar <ABC>   description of bar
+      -c <INT>
+      -h, --help        Print help
     |}]
 ;;
 
@@ -163,54 +168,56 @@ let%expect_test "arguments and subcommands" =
   run command [];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
-
     Fake version control software
 
-    Options:
-     --help, -h   Print help
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
-    Subcommands:
-     log  List recent commits
-     commit  Make a new commit
+    Options:
+      -h, --help  Print help
+
+
+    Commands:
+      log     List recent commits
+      commit  Make a new commit
     |}];
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
-           foo.exe [SUBCOMMAND]
-
     Fake version control software
 
-    Options:
-     --help, -h   Print help
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTIONS]
 
-    Subcommands:
-     log  List recent commits
-     commit  Make a new commit
+    Options:
+      -h, --help  Print help
+
+
+    Commands:
+      log     List recent commits
+      commit  Make a new commit
     |}];
   run command [ "log"; "--help" ];
   [%expect
     {|
-    Usage: foo.exe log [OPTIONS]
-
     List recent commits
 
+    Usage: foo.exe log [OPTIONS]
+
     Options:
-     --pretty, -p <VALUE>
-     --help, -h   Print help
+      -p, --pretty <VALUE>
+      -h, --help            Print help
     |}];
   run command [ "commit"; "--help" ];
   [%expect
     {|
-    Usage: foo.exe commit [OPTIONS]
-
     Make a new commit
 
+    Usage: foo.exe commit [OPTIONS]
+
     Options:
-     --amend, -a
-     -m, --message <STRING>
-     --help, -h   Print help
+      -a, --amend
+      -m, --message <STRING>
+      -h, --help              Print help
     |}]
 ;;

@@ -82,6 +82,13 @@ module List = struct
     | [ x ] -> Some x
     | _ :: xs -> last xs
   ;;
+
+  let max xs =
+    fold_left xs ~init:None ~f:(fun acc x ->
+      match acc with
+      | None -> Some x
+      | Some y -> if x > y then Some x else Some y)
+  ;;
 end
 
 module Map = struct
