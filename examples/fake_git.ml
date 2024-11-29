@@ -27,10 +27,11 @@ let checkout =
 
 let commit =
   let open Arg_parser in
-  let+ _amend = flag [ "amend"; "a" ] ~desc:"Ammend a commit"
+  let+ _amend = flag [ "amend" ] ~desc:"Amend a commit"
+  and+ _all = flag [ "a" ] ~desc:"Commit all changes"
   and+ _branch = named_opt [ "b"; "branch" ] branch_conv
   and+ _message = named_opt [ "m"; "message" ] string ~desc:"The commit message"
-  and+ _files = pos_all file in
+  and+ _files = pos_all file ~desc:"The files to commit" in
   ()
 ;;
 

@@ -10,6 +10,15 @@ let name_of_string_exn string =
 
 exception Usage
 
+module Subcommand = struct
+  type t =
+    { name : Name.t
+    ; desc : string option
+    }
+
+  let help_entry { name; desc } : Help.Subcommands.entry = { Help.name; desc }
+end
+
 module Arg_parser = struct
   module Completion_ = Completion
 
@@ -351,6 +360,7 @@ module Arg_parser = struct
       ; desc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
+      ; repeated = true
       }
       conv
   ;;
@@ -367,6 +377,7 @@ module Arg_parser = struct
       ; desc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
+      ; repeated = false
       }
       conv
   ;;
@@ -401,6 +412,7 @@ module Arg_parser = struct
       ; desc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
+      ; repeated = false
       }
       conv
       ~allow_many
@@ -419,6 +431,7 @@ module Arg_parser = struct
       ; desc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
+      ; repeated = false
       }
       conv
     |> map ~f:(function
@@ -433,7 +446,12 @@ module Arg_parser = struct
 
   let flag_count ?desc ?hidden names =
     let names = names_of_strings names in
-    { arg_spec = Spec.create_flag names ~desc ~hidden:(Option.value hidden ~default:false)
+    { arg_spec =
+        Spec.create_flag
+          names
+          ~desc
+          ~hidden:(Option.value hidden ~default:false)
+          ~repeated:true
     ; arg_compute =
         (fun context -> Raw_arg_table.get_flag_count_names context.raw_arg_table names)
     }
@@ -556,53 +574,32 @@ module Arg_parser = struct
 
   let validate t = Spec.validate t.arg_spec
 
-  let pp_help
-    ppf
-    arg_spec
-    (command_line : Command_line.Rich.t)
-    ~description
-    ~child_subcommands
-    =
-    Format.pp_print_string ppf "Usage:";
-    if not (Spec.is_empty arg_spec)
-    then (
-      Format.fprintf ppf " %s" command_line.program;
-      List.iter command_line.subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
-      Spec.usage ppf arg_spec;
-      Format.pp_print_newline ppf ());
-    if not (List.is_empty child_subcommands)
-    then (
-      (* Line up with the regular usage line *)
-      if not (Spec.is_empty arg_spec) then Format.pp_print_string ppf "      ";
-      Format.fprintf ppf " %s" command_line.program;
-      List.iter command_line.subcommand ~f:(fun part -> Format.fprintf ppf " %s" part);
-      Format.pp_print_string ppf " [SUBCOMMAND]";
-      Format.pp_print_newline ppf ());
-    Format.pp_print_newline ppf ();
-    Option.iter description ~f:(fun description ->
-      Format.fprintf ppf "%s" description;
-      Format.pp_print_newline ppf ();
-      Format.pp_print_newline ppf ());
-    if not (Spec.Positional.is_empty arg_spec.positional)
-    then Spec.positional_help ppf arg_spec;
-    if not (Spec.Named.is_empty arg_spec.named) then Spec.named_help ppf arg_spec;
-    if not (List.is_empty child_subcommands)
-    then (
-      if not (Spec.Named.is_empty arg_spec.named) then Format.pp_print_newline ppf ();
-      Format.pp_print_string ppf "Subcommands:";
-      Format.pp_print_newline ppf ();
-      List.iter child_subcommands ~f:(fun (name, description_opt) ->
-        Format.fprintf ppf " %s" (Name.to_string name);
-        Option.iter description_opt ~f:(fun description ->
-          Format.fprintf ppf "  %s" description);
-        Format.pp_print_newline ppf ()))
+  let help arg_spec (command_line : Command_line.Rich.t) ~desc ~child_subcommands =
+    let sections =
+      { Help.Sections.arg_sections = Spec.help_sections arg_spec
+      ; subcommands = List.map child_subcommands ~f:Subcommand.help_entry
+      }
+    in
+    { Help.program_name = command_line.program
+    ; subcommand = command_line.subcommand
+    ; desc
+    ; sections
+    }
+  ;;
+
+  let pp_help ppf arg_spec command_line ~desc ~child_subcommands =
+    Help.pp ppf (help arg_spec command_line ~desc ~child_subcommands)
   ;;
 
   let help_spec =
-    Spec.create_flag Built_in.help_names ~desc:(Some "Print help") ~hidden:false
+    Spec.create_flag
+      Built_in.help_names
+      ~desc:(Some "Print help")
+      ~hidden:false
+      ~repeated:false
   ;;
 
-  let usage ~description ~child_subcommands =
+  let usage ~desc ~child_subcommands =
     { arg_spec = Spec.empty
     ; arg_compute =
         (fun context ->
@@ -610,13 +607,13 @@ module Arg_parser = struct
             Format.std_formatter
             help_spec
             context.command_line
-            ~description
+            ~desc
             ~child_subcommands;
           raise Usage)
     }
   ;;
 
-  let add_help { arg_spec; arg_compute } ~description ~child_subcommands =
+  let add_help { arg_spec; arg_compute } ~desc ~child_subcommands =
     let arg_spec = Spec.merge arg_spec help_spec in
     { arg_spec
     ; arg_compute =
@@ -628,16 +625,16 @@ module Arg_parser = struct
               Format.std_formatter
               arg_spec
               context.command_line
-              ~description
+              ~desc
               ~child_subcommands;
             raise Usage)
           else arg_compute context)
     }
   ;;
 
-  let finalize t ~description ~child_subcommands =
+  let finalize t ~desc ~child_subcommands =
     validate t;
-    add_help t ~description ~child_subcommands
+    add_help t ~desc ~child_subcommands
   ;;
 
   module Reentrant = struct
@@ -791,7 +788,7 @@ end
 module Command = struct
   type internal = Print_completion_script_bash
 
-  let internal_description = function
+  let internal_desc = function
     | Print_completion_script_bash -> "Print the bash completion script for this program."
   ;;
 
@@ -805,12 +802,12 @@ module Command = struct
   type 'a t =
     | Singleton of
         { arg_parser : 'a Arg_parser.t
-        ; description : string option
+        ; desc : string option
         }
     | Group of
         { children : 'a subcommand list
         ; default_arg_parser : 'a Arg_parser.t
-        ; description : string option
+        ; desc : string option
         }
     | Internal of internal
 
@@ -819,17 +816,15 @@ module Command = struct
     ; command : 'a t
     }
 
-  let command_description = function
-    | Singleton { description; _ } | Group { description; _ } -> description
-    | Internal internal -> Some (internal_description internal)
+  let command_desc = function
+    | Singleton { desc; _ } | Group { desc; _ } -> desc
+    | Internal internal -> Some (internal_desc internal)
   ;;
 
   let singleton ?desc arg_parser =
-    let description = desc in
+    let desc = desc in
     Singleton
-      { arg_parser = Arg_parser.finalize arg_parser ~description ~child_subcommands:[]
-      ; description
-      }
+      { arg_parser = Arg_parser.finalize arg_parser ~desc ~child_subcommands:[]; desc }
   ;;
 
   let subcommand ?(hidden = false) name_string command =
@@ -837,20 +832,22 @@ module Command = struct
   ;;
 
   let group ?default_arg_parser ?desc children =
-    let description = desc in
+    let desc = desc in
     let child_subcommands =
       List.filter_map children ~f:(fun { info; command } ->
-        if info.hidden then None else Some (info.name, command_description command))
+        if info.hidden
+        then None
+        else Some { Subcommand.name = info.name; desc = command_desc command })
     in
     let default_arg_parser =
       match default_arg_parser with
-      | None -> Arg_parser.usage ~description ~child_subcommands
+      | None -> Arg_parser.usage ~desc ~child_subcommands
       | Some default_arg_parser -> default_arg_parser
     in
     let default_arg_parser =
-      Arg_parser.finalize default_arg_parser ~description ~child_subcommands
+      Arg_parser.finalize default_arg_parser ~desc ~child_subcommands
     in
-    Group { children; default_arg_parser; description }
+    Group { children; default_arg_parser; desc }
   ;;
 
   let print_completion_script_bash = Internal Print_completion_script_bash
@@ -863,10 +860,10 @@ module Command = struct
 
   let rec traverse t args subcommand_acc =
     match t, args with
-    | Singleton { arg_parser; description = _ }, args ->
+    | Singleton { arg_parser; desc = _ }, args ->
       Ok
         { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
-    | Group { children; default_arg_parser; description = _ }, x :: xs ->
+    | Group { children; default_arg_parser; desc = _ }, x :: xs ->
       let subcommand =
         List.find_map children ~f:(fun { info = { name; _ }; command } ->
           if String.equal (Name.to_string name) x then Some command else None)
@@ -879,7 +876,7 @@ module Command = struct
            ; args = x :: xs
            ; subcommand = List.rev subcommand_acc
            })
-    | Group { children = _; default_arg_parser; description = _ }, [] ->
+    | Group { children = _; default_arg_parser; desc = _ }, [] ->
       Ok
         { operation = `Arg_parser default_arg_parser
         ; args = []
@@ -890,7 +887,7 @@ module Command = struct
   ;;
 
   let rec completion_spec = function
-    | Singleton { arg_parser; description = _ } ->
+    | Singleton { arg_parser; desc = _ } ->
       let parser_spec = Spec.to_completion_parser_spec arg_parser.arg_spec in
       { Completion_spec.parser_spec; subcommands = [] }
     | Internal Print_completion_script_bash ->
@@ -898,7 +895,7 @@ module Command = struct
         Spec.to_completion_parser_spec Completion_config.arg_parser.arg_spec
       in
       { Completion_spec.parser_spec; subcommands = [] }
-    | Group { children; default_arg_parser; description = _ } ->
+    | Group { children; default_arg_parser; desc = _ } ->
       let parser_spec = Spec.to_completion_parser_spec default_arg_parser.arg_spec in
       let subcommands =
         List.filter_map children ~f:(fun { info; command } ->
@@ -1022,7 +1019,7 @@ module Command = struct
       let arg_parser =
         Arg_parser.finalize
           Completion_config.arg_parser
-          ~description:(Some (internal_description Print_completion_script_bash))
+          ~desc:(Some (internal_desc Print_completion_script_bash))
           ~child_subcommands:[]
       in
       (* Print the completion script. Note that this can't be combined

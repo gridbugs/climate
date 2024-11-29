@@ -43,6 +43,7 @@ module List : sig
   val is_empty : 'a t -> bool
   val filter_opt : 'a option t -> 'a t
   val last : 'a t -> 'a option
+  val max : int t -> int option
 end
 
 module Map : sig
