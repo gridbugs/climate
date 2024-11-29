@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+### Added
 
 - Color in help messages (#6)
-- Improvements to formatting of help messages (#5)
 - Allow documentation for positional args (#4)
+
+### Changed
+
+- Improvements to formatting of help messages (#5)
 - Improve filename completion (#3)
 - Stop printing spec errors (#2, fixes #1)
 
