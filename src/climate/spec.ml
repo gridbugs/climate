@@ -132,7 +132,7 @@ module Positional = struct
 
   let help_entries { all_above_inclusive; others_by_index } =
     let fixed =
-      Int.Map.to_list others_by_index
+      Int.Map.bindings others_by_index
       |> List.map ~f:snd
       |> List.map ~f:help_entry_of_single_arg
     in
