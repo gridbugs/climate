@@ -1,8 +1,28 @@
 module Help_style : sig
+  type color =
+    [ `Black
+    | `Red
+    | `Green
+    | `Yellow
+    | `Blue
+    | `Magenta
+    | `Cyan
+    | `White
+    | `Bright_black
+    | `Bright_red
+    | `Bright_green
+    | `Bright_yellow
+    | `Bright_blue
+    | `Bright_magenta
+    | `Bright_cyan
+    | `Bright_white
+    ]
+
   type ansi_style =
     { bold : bool
+    ; dim : bool
     ; underline : bool
-    ; color : [ `Red | `Green | `Yellow | `Blue | `Magenta | `Cyan ] option
+    ; color : color option
     }
 
   val ansi_style_plain : ansi_style

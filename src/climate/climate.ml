@@ -5,10 +5,30 @@ module Spec_error = Error.Spec_error
 module Help_style = struct
   include Help.Style
 
+  type color =
+    [ `Black
+    | `Red
+    | `Green
+    | `Yellow
+    | `Blue
+    | `Magenta
+    | `Cyan
+    | `White
+    | `Bright_black
+    | `Bright_red
+    | `Bright_green
+    | `Bright_yellow
+    | `Bright_blue
+    | `Bright_magenta
+    | `Bright_cyan
+    | `Bright_white
+    ]
+
   type ansi_style = Ansi_style.t =
     { bold : bool
+    ; dim : bool
     ; underline : bool
-    ; color : [ `Red | `Green | `Yellow | `Blue | `Magenta | `Cyan ] option
+    ; color : color option
     }
 
   let ansi_style_plain = Ansi_style.default
