@@ -618,7 +618,7 @@ module Arg_parser = struct
   let help_spec =
     Spec.create_flag
       Built_in.help_names
-      ~desc:(Some "Print help")
+      ~desc:(Some "Show this help message.")
       ~hidden:false
       ~repeated:false
   ;;
