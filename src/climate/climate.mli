@@ -1,3 +1,27 @@
+module Help_style : sig
+  type ansi_style =
+    { bold : bool
+    ; underline : bool
+    ; color : [ `Red | `Green | `Yellow | `Blue | `Magenta | `Cyan ] option
+    }
+
+  val ansi_style_plain : ansi_style
+
+  type t =
+    { program_desc : ansi_style
+    ; usage : ansi_style
+    ; arg_name : ansi_style
+    ; arg_desc : ansi_style
+    ; section_heading : ansi_style
+    }
+
+  (** An opinionated default value with some colours and formatting *)
+  val default : t
+
+  (** Plain formatting for each part of help messages *)
+  val plain : t
+end
+
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
   (** A parser of values of type ['a] *)
@@ -354,16 +378,22 @@ module Command : sig
   val eval
     :  ?eval_config:Eval_config.t
     -> ?program_name:Program_name.t
+    -> ?help_style:Help_style.t
     -> 'a t
     -> string list
     -> 'a
 
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)
-  val run : ?eval_config:Eval_config.t -> 'a t -> 'a
+  val run : ?eval_config:Eval_config.t -> ?help_style:Help_style.t -> 'a t -> 'a
 
   (** [run_singleton arg_parser] is a shorthand for [run (singleton arg_parser)] *)
-  val run_singleton : ?eval_config:Eval_config.t -> ?desc:string -> 'a Arg_parser.t -> 'a
+  val run_singleton
+    :  ?eval_config:Eval_config.t
+    -> ?help_style:Help_style.t
+    -> ?desc:string
+    -> 'a Arg_parser.t
+    -> 'a
 end
 
 module Parse_error : sig

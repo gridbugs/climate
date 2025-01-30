@@ -2,13 +2,26 @@ open Import
 
 module Style = struct
   type t =
-    { name : Ansi_style.t
-    ; heading : Ansi_style.t
+    { program_desc : Ansi_style.t
+    ; usage : Ansi_style.t
+    ; arg_name : Ansi_style.t
+    ; arg_desc : Ansi_style.t
+    ; section_heading : Ansi_style.t
     }
 
+  let plain =
+    { program_desc = Ansi_style.default
+    ; usage = Ansi_style.default
+    ; arg_name = Ansi_style.default
+    ; arg_desc = Ansi_style.default
+    ; section_heading = Ansi_style.default
+    }
+  ;;
+
   let default =
-    { name = { Ansi_style.default with color = Some `Green; bold = true }
-    ; heading = { Ansi_style.default with color = Some `Yellow; bold = true }
+    { plain with
+      arg_name = { Ansi_style.default with color = Some `Green; bold = true }
+    ; section_heading = { Ansi_style.default with color = Some `Yellow; bold = true }
     }
   ;;
 end
@@ -135,20 +148,21 @@ module Print = struct
       let names_value_string =
         names_value_padded_to_string ~at_least_one_left_name ~right_names_left_padding t
       in
-      Ansi_style.pp_with_style style.name ppf ~f:(fun ppf ->
+      Ansi_style.pp_with_style style.arg_name ppf ~f:(fun ppf ->
         Format.pp_print_string ppf names_value_string);
       pp_print_spaces ppf 1;
       Option.iter t.desc ~f:(fun desc ->
         let padding = desc_left_padding - String.length names_value_string in
         pp_print_spaces ppf padding;
-        Format.pp_print_string ppf desc);
+        Ansi_style.pp_with_style style.arg_desc ppf ~f:(fun ppf ->
+          Format.pp_print_string ppf desc));
       Format.pp_print_newline ppf ()
     ;;
   end
 
   module Section = struct
     type t =
-      { heading : string
+      { section_heading : string
       ; entries : Entry.t list
       }
 
@@ -179,8 +193,8 @@ module Print = struct
             not (List.is_empty names.left))
         in
         pp_print_newlines ppf 1;
-        Ansi_style.pp_with_style style.heading ppf ~f:(fun ppf ->
-          Format.pp_print_string ppf t.heading);
+        Ansi_style.pp_with_style style.section_heading ppf ~f:(fun ppf ->
+          Format.pp_print_string ppf t.section_heading);
         pp_print_newlines ppf 1;
         let right_names_left_padding = max_left_length t in
         let desc_left_padding =
@@ -224,7 +238,7 @@ module Positional_args = struct
               })
             |> Option.to_list)
     in
-    { Print.Section.heading = "Arguments:"; entries }
+    { Print.Section.section_heading = "Arguments:"; entries }
   ;;
 
   let pp_usage_args ppf t =
@@ -251,7 +265,7 @@ module Named_args = struct
   type t = entry list
 
   let to_print_section t =
-    { Print.Section.heading = "Options:"
+    { Print.Section.section_heading = "Options:"
     ; entries =
         List.map t ~f:(fun { name = { names; value; repeated }; desc } ->
           let names = Nonempty_list.to_list names in
@@ -275,7 +289,7 @@ module Subcommands = struct
   type t = entry list
 
   let to_print_section t =
-    { Print.Section.heading = "Commands:"
+    { Print.Section.section_heading = "Commands:"
     ; entries =
         List.map t ~f:(fun { name; desc } ->
           { Print.Entry.names = Print.Names.of_right [ Name.to_string name ]
@@ -327,9 +341,9 @@ let pp_command_base ppf t =
 ;;
 
 let pp_usage (style : Style.t) ppf t =
-  Ansi_style.pp_with_style style.heading ppf ~f:(fun ppf ->
+  Ansi_style.pp_with_style style.section_heading ppf ~f:(fun ppf ->
     Format.pp_print_string ppf "Usage: ");
-  Ansi_style.pp_with_style style.name ppf ~f:(fun ppf ->
+  Ansi_style.pp_with_style style.usage ppf ~f:(fun ppf ->
     if not (List.is_empty t.sections.subcommands)
     then (
       pp_command_base ppf t;
@@ -340,9 +354,10 @@ let pp_usage (style : Style.t) ppf t =
     Arg_sections.pp_usage_args ppf t.sections.arg_sections)
 ;;
 
-let pp style ppf t =
+let pp (style : Style.t) ppf t =
   Option.iter t.desc ~f:(fun desc ->
-    Format.pp_print_string ppf desc;
+    Ansi_style.pp_with_style style.program_desc ppf ~f:(fun ppf ->
+      Format.pp_print_string ppf desc);
     pp_print_newlines ppf 2);
   pp_usage style ppf t;
   pp_print_newlines ppf 1;

@@ -2,7 +2,9 @@ open Climate
 open Command
 
 let run command args =
-  try eval ~program_name:(Literal "foo.exe") command args with
+  try
+    eval ~program_name:(Literal "foo.exe") ~help_style:Help_style.plain command args
+  with
   | Usage -> ()
 ;;
 
