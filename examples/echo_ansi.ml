@@ -58,7 +58,16 @@ let () =
   in
   (* Run the parser yielding either a main function to call or an indication
      that we should print the completion script. *)
-  match Command.run command with
+  let help_style =
+    let open Help_style in
+    { program_desc = { ansi_style_plain with color = Some `Green }
+    ; usage = { ansi_style_plain with color = Some `Yellow }
+    ; section_heading = { ansi_style_plain with color = Some `Red }
+    ; arg_name = { ansi_style_plain with color = Some `Blue }
+    ; arg_desc = { ansi_style_plain with color = Some `Cyan }
+    }
+  in
+  match Command.run ~help_style command with
   | `Completion -> print_endline (Command.completion_script_bash command)
   | `Main main -> main ()
 ;;

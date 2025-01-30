@@ -2,11 +2,18 @@ open Import
 
 module Style : sig
   type t =
-    { name : Ansi_style.t
-    ; heading : Ansi_style.t
+    { program_desc : Ansi_style.t
+    ; usage : Ansi_style.t
+    ; arg_name : Ansi_style.t
+    ; arg_desc : Ansi_style.t
+    ; section_heading : Ansi_style.t
     }
 
+  (** An opinionated default value with some colours and formatting *)
   val default : t
+
+  (** Plain formatting for each part of help messages *)
+  val plain : t
 end
 
 type 'name entry =
