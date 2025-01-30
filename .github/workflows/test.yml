@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Set-up OCaml
-      uses: ocaml/setup-ocaml@v2
+      uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: 4.14.1
         opam-pin: false
@@ -27,7 +27,7 @@ jobs:
       run: |
         sudo apt update
     - name: Set-up OCaml
-      uses: ocaml/setup-ocaml@v2
+      uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: 4.14.1
     - run: opam install ppx_inline_test ppx_expect
