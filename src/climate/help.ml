@@ -20,8 +20,8 @@ module Style = struct
 
   let default =
     { plain with
-      arg_name = { Ansi_style.default with color = Some `Green; bold = true }
-    ; section_heading = { Ansi_style.default with color = Some `Yellow; bold = true }
+      arg_name = { Ansi_style.default with color = Some `Magenta; bold = true }
+    ; section_heading = { Ansi_style.default with color = Some `Blue; bold = true }
     }
   ;;
 end
