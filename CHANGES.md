@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Allow help messages colours to be configured (#7)
+
+### Changed
+
+- Changed default help message colour scheme to be more colour-blind readible
+  and more visible on light and dark terminals (#7)
+- Changed description of `--help` argument.
+
+### Fixes
+
+- Remove superfluous style reset escape sequences (#7)
+
 ## 0.3.0
 
 ### Added
