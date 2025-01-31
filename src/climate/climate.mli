@@ -325,8 +325,7 @@ end
 module Command : sig
   type 'a t
 
-  (** Declare a single command. Performs some checks that the parser is
-      well-formed and raises a [Spec_error.E] if iat's invalid. *)
+  (** Declare a single command. *)
   val singleton : ?desc:string -> 'a Arg_parser.t -> 'a t
 
   type 'a subcommand
@@ -337,8 +336,7 @@ module Command : sig
       leaves of which will be either singletons or empty groups (groups with an
       empty list of children). If the [default_arg_parser] argument is passed then
       sequences of subcommands may terminating with this command and will be
-      passed with that argument. Performs some checks that each parser is
-      well-formed and raises a [Spec_error.E] if an invalid parser is found.*)
+      passed with that argument. *)
   val group
     :  ?default_arg_parser:'a Arg_parser.t
     -> ?desc:string
@@ -420,19 +418,6 @@ module Parse_error : sig
   (** Errors encountered while interpreting command-line arguments. This
       indicates that the user of a CLI program made with this library has
       passed invalid command-line arguments to the program. *)
-  type t
-
-  exception E of t
-
-  val to_string : t -> string
-end
-
-module Spec_error : sig
-  (** Errors that indicate that a client of this library has attempted
-      to create an invalid argument spec. These are included to aid
-      debugging when writing a CLI program with this library, though a
-      user of a CLI tool should never encounter one of these, no
-      matter which arguments they pass. *)
   type t
 
   exception E of t
