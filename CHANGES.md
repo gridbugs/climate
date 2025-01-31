@@ -15,6 +15,7 @@
 ### Fixes
 
 - Remove superfluous style reset escape sequences (#7)
+- Don't apply formatting to trailing spaces in argument names in help messages (#8)
 
 ## 0.3.0
 
