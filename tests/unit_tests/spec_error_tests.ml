@@ -48,7 +48,8 @@ let%expect_test "equals sign in name" =
 
 let%expect_test "negative position" =
   check (fun () -> pos_req (-2) string);
-  [%expect {| Error in argument spec: Attempted to declare positional argument with negative position: -2 |}]
+  [%expect
+    {| Error in argument spec: Attempted to declare positional argument with negative position: -2 |}]
 ;;
 
 let%expect_test "duplicate enum names" =
