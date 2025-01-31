@@ -119,20 +119,33 @@ module Print = struct
 
     let indent = 2
 
-    let pp_names_value_padded ppf ~at_least_one_left_name ~right_names_left_padding t =
+    let pp_names_value_padded
+      (style : Style.t)
+      ppf
+      ~at_least_one_left_name
+      ~right_names_left_padding
+      t
+      =
       if not (Names.is_empty t.names)
       then (
-        Names.pp_padded ppf ~at_least_one_left_name ~right_names_left_padding t.names;
+        Ansi_style.pp_with_style style.arg_name ppf ~f:(fun ppf ->
+          Names.pp_padded ppf ~at_least_one_left_name ~right_names_left_padding t.names);
         pp_print_spaces ppf 1);
       Option.iter t.value ~f:(fun value ->
-        Value.pp ppf value;
-        if t.repeated then pp_print_elipsis ppf ();
+        Ansi_style.pp_with_style style.arg_name ppf ~f:(fun ppf ->
+          Value.pp ppf value;
+          if t.repeated then pp_print_elipsis ppf ());
         pp_print_spaces ppf 1)
     ;;
 
-    let names_value_padded_to_string ~at_least_one_left_name ~right_names_left_padding t =
+    let names_value_padded_to_string
+      style
+      ~at_least_one_left_name
+      ~right_names_left_padding
+      t
+      =
       let ppf = Format.str_formatter in
-      pp_names_value_padded ppf ~at_least_one_left_name ~right_names_left_padding t;
+      pp_names_value_padded style ppf ~at_least_one_left_name ~right_names_left_padding t;
       Format.flush_str_formatter ()
     ;;
 
@@ -146,10 +159,13 @@ module Print = struct
       =
       pp_print_spaces ppf indent;
       let names_value_string =
-        names_value_padded_to_string ~at_least_one_left_name ~right_names_left_padding t
+        names_value_padded_to_string
+          style
+          ~at_least_one_left_name
+          ~right_names_left_padding
+          t
       in
-      Ansi_style.pp_with_style style.arg_name ppf ~f:(fun ppf ->
-        Format.pp_print_string ppf names_value_string);
+      Format.pp_print_string ppf names_value_string;
       pp_print_spaces ppf 1;
       Option.iter t.desc ~f:(fun desc ->
         let padding = desc_left_padding - String.length names_value_string in
@@ -176,6 +192,7 @@ module Print = struct
     let max_name_length ~at_least_one_left_name ~right_names_left_padding t =
       List.map t.entries ~f:(fun entry ->
         Entry.names_value_padded_to_string
+          Style.plain
           ~at_least_one_left_name
           ~right_names_left_padding
           entry
