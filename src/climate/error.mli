@@ -49,8 +49,6 @@ module Spec_error : sig
         }
     | Conflicting_requiredness_for_positional_argument of int
 
-  exception E of t
-
   val to_string : t -> string
 end
 

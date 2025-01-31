@@ -120,8 +120,6 @@ module Spec_error = struct
         }
     | Conflicting_requiredness_for_positional_argument of int
 
-  exception E of t
-
   let to_string = function
     | Empty_name_list -> "Name list is empty"
     | Duplicate_name name ->
@@ -179,4 +177,7 @@ module Spec_error = struct
   ;;
 end
 
-let spec_error error = raise (Spec_error.E error)
+let spec_error error =
+  raise
+    (Failure (Printf.sprintf "Error in argument spec: %s" (Spec_error.to_string error)))
+;;
