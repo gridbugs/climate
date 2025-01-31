@@ -130,10 +130,10 @@ let%expect_test "arguments" =
       <ARG2>  The second argument
 
     Options:
-      -h, --help        Show this help message.
-      -c <INT>
-          --bar <ABC>   description of bar
       -f, --foo <FILE>  description of foo
+          --bar <ABC>   description of bar
+      -c <INT>
+      -h, --help        Show this help message.
     |}]
 ;;
 
@@ -200,8 +200,8 @@ let%expect_test "arguments and subcommands" =
     Usage: foo.exe log [OPTIONS]
 
     Options:
-      -h, --help            Show this help message.
       -p, --pretty <VALUE>
+      -h, --help            Show this help message.
     |}];
   run command [ "commit"; "--help" ];
   [%expect
@@ -211,8 +211,8 @@ let%expect_test "arguments and subcommands" =
     Usage: foo.exe commit [OPTIONS]
 
     Options:
-      -h, --help              Show this help message.
-      -m, --message <STRING>
       -a, --amend
+      -m, --message <STRING>
+      -h, --help              Show this help message.
     |}]
 ;;

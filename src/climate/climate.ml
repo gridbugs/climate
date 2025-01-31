@@ -63,7 +63,7 @@ let name_of_string_exn string =
 (* TODO: Explore using a variant rather than raising exceptions for non-returning arg
    parsers such as `--help` and `--manpage` *)
 exception Usage
-(*exception Manpage*)
+exception Manpage
 
 module Subcommand = struct
   type t =
@@ -666,7 +666,7 @@ module Arg_parser = struct
       ~repeated:false
   ;;
 
-  let _manpage_spec =
+  let manpage_spec =
     Spec.create_flag Built_in.manpage_names ~desc:None ~hidden:true ~repeated:false
   ;;
 
@@ -686,8 +686,7 @@ module Arg_parser = struct
   ;;
 
   let add_help_and_manpage { arg_spec; arg_compute } ~desc ~child_subcommands ~prose =
-    let _ = prose in
-    let arg_spec = arg_spec |> Spec.merge help_spec (*|> Spec.merge manpage_spec *) in
+    let arg_spec = arg_spec |> Spec.merge help_spec |> Spec.merge manpage_spec in
     { arg_spec
     ; arg_compute =
         (fun context help_info ->
@@ -701,8 +700,8 @@ module Arg_parser = struct
               context.command_line
               ~desc
               ~child_subcommands;
-            raise Usage
-            (*else if Raw_arg_table.get_flag_count_names
+            raise Usage)
+          else if Raw_arg_table.get_flag_count_names
                     context.raw_arg_table
                     Built_in.manpage_names
                   > 0
@@ -711,7 +710,7 @@ module Arg_parser = struct
             let help = help arg_spec context.command_line ~desc ~child_subcommands in
             let manpage = { Manpage.prose; help; version = help_info.version } in
             print_endline (Manpage.to_troff_string manpage);
-            raise Manpage) *))
+            raise Manpage)
           else arg_compute context help_info)
     }
   ;;
@@ -1157,7 +1156,7 @@ module Command = struct
     | Parse_error.E e ->
       Printf.eprintf "%s" (Parse_error.to_string e);
       exit Parse_error.exit_code
-    | Usage (*| Manpage*) -> exit 0
+    | Usage | Manpage -> exit 0
   ;;
 
   let run_singleton
