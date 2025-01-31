@@ -44,7 +44,10 @@ let commit =
 let log =
   let open Arg_parser in
   let+ _pretty =
-    named_opt [ "pretty"; "p" ] (string_enum [ "full"; "fuller"; "short"; "oneline" ])
+    named_opt
+      [ "pretty"; "p" ]
+      (string_enum [ "full"; "fuller"; "short"; "oneline" ])
+      ~desc:"foo"
   in
   ()
 ;;
@@ -61,6 +64,7 @@ let bisect_common =
 let () =
   let open Command in
   group
+    ~prose:(Manpage.prose ~description:[] ())
     ~desc:"Fake version control"
     [ subcommand "config" (singleton Arg_parser.unit ~desc:"Configure the tool.")
     ; subcommand "checkout" (singleton checkout ~desc:"Check out a revision.")

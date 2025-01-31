@@ -42,6 +42,26 @@ module Help_style : sig
   val plain : t
 end
 
+module Manpage : sig
+  type markup =
+    [ `Paragraph of string
+    | `Preformatted of string
+    ]
+
+  (** The parts of a manpage that are hand-written and not generated from the
+      command line spec *)
+  type prose
+
+  val prose
+    :  ?description:markup list
+    -> ?environment:markup list
+    -> ?files:markup list
+    -> ?examples:markup list
+    -> ?authors:markup list
+    -> unit
+    -> prose
+end
+
 (** A DSL for declaratively describing a program's command-line arguments *)
 module Arg_parser : sig
   (** A parser of values of type ['a] *)
@@ -326,7 +346,7 @@ module Command : sig
   type 'a t
 
   (** Declare a single command. *)
-  val singleton : ?desc:string -> 'a Arg_parser.t -> 'a t
+  val singleton : ?desc:string -> ?prose:Manpage.prose -> 'a Arg_parser.t -> 'a t
 
   type 'a subcommand
 
@@ -340,6 +360,7 @@ module Command : sig
   val group
     :  ?default_arg_parser:'a Arg_parser.t
     -> ?desc:string
+    -> ?prose:Manpage.prose
     -> 'a subcommand list
     -> 'a t
 
@@ -397,18 +418,27 @@ module Command : sig
     :  ?eval_config:Eval_config.t
     -> ?program_name:Program_name.t
     -> ?help_style:Help_style.t
+    -> ?version:string
     -> 'a t
     -> string list
     -> 'a
 
   (** Run the command line parser returning its result. Parse errors are
       handled by printing an error message to stderr and exiting. *)
-  val run : ?eval_config:Eval_config.t -> ?help_style:Help_style.t -> 'a t -> 'a
+  val run
+    :  ?eval_config:Eval_config.t
+    -> ?program_name:Program_name.t
+    -> ?help_style:Help_style.t
+    -> ?version:string
+    -> 'a t
+    -> 'a
 
   (** [run_singleton arg_parser] is a shorthand for [run (singleton arg_parser)] *)
   val run_singleton
     :  ?eval_config:Eval_config.t
+    -> ?program_name:Program_name.t
     -> ?help_style:Help_style.t
+    -> ?version:string
     -> ?desc:string
     -> 'a Arg_parser.t
     -> 'a

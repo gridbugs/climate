@@ -34,13 +34,36 @@ module Help_style = struct
   let ansi_style_plain = Ansi_style.default
 end
 
+module Manpage = struct
+  include Manpage
+
+  type markup =
+    [ `Paragraph of string
+    | `Preformatted of string
+    ]
+
+  type prose = Manpage.Prose.t
+
+  let prose = Prose.create
+end
+
+module Help_info = struct
+  type t =
+    { style : Help_style.t
+    ; version : string option
+    }
+end
+
 let name_of_string_exn string =
   match Name.of_string string with
   | Ok name -> name
   | Error e -> Error.spec_error (Invalid_name (string, e))
 ;;
 
+(* TODO: Explore using a variant rather than raising exceptions for non-returning arg
+   parsers such as `--help` and `--manpage` *)
 exception Usage
+exception Manpage
 
 module Subcommand = struct
   type t =
@@ -61,7 +84,7 @@ module Arg_parser = struct
       }
   end
 
-  type 'a arg_compute = Context.t -> Help_style.t -> 'a
+  type 'a arg_compute = Context.t -> Help_info.t -> 'a
 
   (* A parser for an argument or set of arguments. Typically parsers for each
      argument are combined into a single giant parser that parses all arguments
@@ -77,14 +100,14 @@ module Arg_parser = struct
     ; arg_compute : 'a arg_compute
     }
 
-  let eval t ~(command_line : Command_line.Rich.t) ~help_style ~ignore_errors =
+  let eval t ~(command_line : Command_line.Rich.t) ~help_info ~ignore_errors =
     let raw_arg_table =
       match Raw_arg_table.parse t.arg_spec command_line.args ~ignore_errors with
       | Ok x -> x
       | Error e -> raise (Parse_error.E e)
     in
     let context = { Context.raw_arg_table; command_line } in
-    t.arg_compute context help_style
+    t.arg_compute context help_info
   ;;
 
   type 'a parse = string -> ('a, [ `Msg of string ]) result
@@ -116,14 +139,14 @@ module Arg_parser = struct
     let reentrant f = Values_reentrant f
 
     let reentrant_parse parser =
-      let help_style =
+      let help_info =
         (* This is an arbitrary style because we don't expect to render help
            messages when parsing the command line for reentrant completions
            (the parser will ignore errors in this case rather than printing a
            help message. *)
-        Help_style.default
+        { Help_info.style = Help_style.default; version = None }
       in
-      let f command_line = eval parser ~command_line ~help_style ~ignore_errors:true in
+      let f command_line = eval parser ~command_line ~help_info ~ignore_errors:true in
       Values_reentrant f
     ;;
 
@@ -314,16 +337,16 @@ module Arg_parser = struct
 
   let map { arg_spec; arg_compute } ~f =
     { arg_spec
-    ; arg_compute = (fun context help_style -> f (arg_compute context help_style))
+    ; arg_compute = (fun context help_info -> f (arg_compute context help_info))
     }
   ;;
 
   let both x y =
     { arg_spec = Spec.merge x.arg_spec y.arg_spec
     ; arg_compute =
-        (fun context help_style ->
-          let x_value = x.arg_compute context help_style in
-          let y_value = y.arg_compute context help_style in
+        (fun context help_info ->
+          let x_value = x.arg_compute context help_info in
+          let y_value = y.arg_compute context help_info in
           x_value, y_value)
     }
   ;;
@@ -346,12 +369,12 @@ module Arg_parser = struct
     | Some strings -> Nonempty_list.map strings ~f:name_of_string_exn
   ;;
 
-  let const x = { arg_spec = Spec.empty; arg_compute = (fun _context _help_style -> x) }
+  let const x = { arg_spec = Spec.empty; arg_compute = (fun _context _help_info -> x) }
   let unit = const ()
 
   let argv0 =
     { arg_spec = Spec.empty
-    ; arg_compute = (fun context _help_style -> context.command_line.program)
+    ; arg_compute = (fun context _help_info -> context.command_line.program)
     }
   ;;
 
@@ -368,7 +391,7 @@ module Arg_parser = struct
   let named_multi_gen info conv =
     { arg_spec = Spec.create_named info
     ; arg_compute =
-        (fun context _help_style ->
+        (fun context _help_info ->
           Raw_arg_table.get_opts_names_by_name context.raw_arg_table info.names
           |> List.map ~f:(fun (name, value) ->
             match conv.parse value with
@@ -496,7 +519,7 @@ module Arg_parser = struct
           ~hidden:(Option.value hidden ~default:false)
           ~repeated:true
     ; arg_compute =
-        (fun context _help_style ->
+        (fun context _help_info ->
           Raw_arg_table.get_flag_count_names context.raw_arg_table names)
     }
   ;;
@@ -530,7 +553,7 @@ module Arg_parser = struct
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
              ~desc)
     ; arg_compute =
-        (fun context _help_style ->
+        (fun context _help_info ->
           Raw_arg_table.get_pos context.raw_arg_table i
           |> Option.map ~f:(fun x ->
             match conv.parse x with
@@ -569,7 +592,7 @@ module Arg_parser = struct
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
              ~desc)
     ; arg_compute =
-        (fun context _help_style ->
+        (fun context _help_info ->
           let left, _ =
             List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i
           in
@@ -595,7 +618,7 @@ module Arg_parser = struct
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
              ~desc)
     ; arg_compute =
-        (fun context _help_style ->
+        (fun context _help_info ->
           let _, right =
             List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i_inclusive
           in
@@ -643,13 +666,17 @@ module Arg_parser = struct
       ~repeated:false
   ;;
 
+  let manpage_spec =
+    Spec.create_flag Built_in.manpage_names ~desc:None ~hidden:true ~repeated:false
+  ;;
+
   let usage ~desc ~child_subcommands =
     { arg_spec = Spec.empty
     ; arg_compute =
-        (fun context help_style ->
+        (fun context help_info ->
           pp_help
             Format.std_formatter
-            help_style
+            help_info.style
             help_spec
             context.command_line
             ~desc
@@ -658,29 +685,39 @@ module Arg_parser = struct
     }
   ;;
 
-  let add_help { arg_spec; arg_compute } ~desc ~child_subcommands =
-    let arg_spec = Spec.merge arg_spec help_spec in
+  let add_help_and_manpage { arg_spec; arg_compute } ~desc ~child_subcommands ~prose =
+    let arg_spec = arg_spec |> Spec.merge help_spec |> Spec.merge manpage_spec in
     { arg_spec
     ; arg_compute =
-        (fun context help_style ->
+        (fun context help_info ->
           if Raw_arg_table.get_flag_count_names context.raw_arg_table Built_in.help_names
              > 0
           then (
             pp_help
               Format.std_formatter
-              help_style
+              help_info.style
               arg_spec
               context.command_line
               ~desc
               ~child_subcommands;
             raise Usage)
-          else arg_compute context help_style)
+          else if Raw_arg_table.get_flag_count_names
+                    context.raw_arg_table
+                    Built_in.manpage_names
+                  > 0
+          then (
+            let prose = Option.value prose ~default:Manpage.Prose.empty in
+            let help = help arg_spec context.command_line ~desc ~child_subcommands in
+            let manpage = { Manpage.prose; help; version = help_info.version } in
+            print_endline (Manpage.to_troff_string manpage);
+            raise Manpage)
+          else arg_compute context help_info)
     }
   ;;
 
-  let finalize t ~desc ~child_subcommands =
+  let finalize t ~desc ~child_subcommands ~prose =
     validate t;
-    add_help t ~desc ~child_subcommands
+    add_help_and_manpage t ~desc ~child_subcommands ~prose
   ;;
 
   module Reentrant = struct
@@ -867,18 +904,19 @@ module Command = struct
     | Internal internal -> Some (internal_desc internal)
   ;;
 
-  let singleton ?desc arg_parser =
+  let singleton ?desc ?prose arg_parser =
     let desc = desc in
     Singleton
-      { arg_parser = Arg_parser.finalize arg_parser ~desc ~child_subcommands:[]; desc }
+      { arg_parser = Arg_parser.finalize arg_parser ~desc ~child_subcommands:[] ~prose
+      ; desc
+      }
   ;;
 
   let subcommand ?(hidden = false) name_string command =
     { info = { Subcommand_info.name = name_of_string_exn name_string; hidden }; command }
   ;;
 
-  let group ?default_arg_parser ?desc children =
-    let desc = desc in
+  let group ?default_arg_parser ?desc ?prose children =
     let child_subcommands =
       List.filter_map children ~f:(fun { info; command } ->
         if info.hidden
@@ -891,7 +929,7 @@ module Command = struct
       | Some default_arg_parser -> default_arg_parser
     in
     let default_arg_parser =
-      Arg_parser.finalize default_arg_parser ~desc ~child_subcommands
+      Arg_parser.finalize default_arg_parser ~desc ~child_subcommands ~prose
     in
     Group { children; default_arg_parser; desc }
   ;;
@@ -1000,7 +1038,7 @@ module Command = struct
     ;;
 
     (* Evaluate this type's argument parser on a given argument list. *)
-    let eval_arg_parser name (raw_command_line : Command_line.Raw.t) help_style =
+    let eval_arg_parser name (raw_command_line : Command_line.Raw.t) help_info =
       match raw_command_line.args with
       | [] -> None
       | _ ->
@@ -1010,7 +1048,7 @@ module Command = struct
           ; subcommand = []
           }
         in
-        Arg_parser.eval (arg_parser name) ~command_line ~help_style ~ignore_errors:true
+        Arg_parser.eval (arg_parser name) ~command_line ~help_info ~ignore_errors:true
     ;;
 
     let run_query t command completion_spec =
@@ -1032,7 +1070,7 @@ module Command = struct
 
   let eval_internal
     (eval_config : Eval_config.t)
-    help_style
+    help_info
     t
     (raw_command_line : Command_line.Raw.t)
     =
@@ -1044,7 +1082,7 @@ module Command = struct
        Reentrant_query.eval_arg_parser
          eval_config.print_reentrant_completions_name
          raw_command_line
-         help_style
+         help_info
      with
      | Some reentrant_query ->
        let reentrant_suggestions =
@@ -1066,13 +1104,14 @@ module Command = struct
       (* This is the common case. Run the selected argument parser
          which will usually have the side effect of running the user's
          program logic. *)
-      Arg_parser.eval arg_parser ~command_line ~help_style ~ignore_errors:false
+      Arg_parser.eval arg_parser ~command_line ~help_info ~ignore_errors:false
     | `Internal Print_completion_script_bash ->
       let arg_parser =
         Arg_parser.finalize
           Completion_config.arg_parser
           ~desc:(Some (internal_desc Print_completion_script_bash))
           ~child_subcommands:[]
+          ~prose:None
       in
       (* Print the completion script. Note that this can't be combined
          into the regular parser logic because it needs to know the
@@ -1085,7 +1124,7 @@ module Command = struct
           ; options
           }
         =
-        Arg_parser.eval arg_parser ~command_line ~help_style ~ignore_errors:false
+        Arg_parser.eval arg_parser ~command_line ~help_info ~ignore_errors:false
       in
       print_endline
         (Completion.generate_bash
@@ -1099,33 +1138,50 @@ module Command = struct
       exit 0
   ;;
 
-  let run ?(eval_config = Eval_config.default) ?(help_style = Help_style.default) t =
-    try Command_line.Raw.from_env () |> eval_internal eval_config help_style t with
+  let run
+    ?(eval_config = Eval_config.default)
+    ?(program_name = Program_name.Argv0)
+    ?(help_style = Help_style.default)
+    ?version
+    t
+    =
+    let command_line_program_name_is_argv0 = Command_line.Raw.from_env () in
+    let command_line =
+      match (program_name : Program_name.t) with
+      | Argv0 -> command_line_program_name_is_argv0
+      | Literal program -> { command_line_program_name_is_argv0 with program }
+    in
+    let help_info = { Help_info.style = help_style; version } in
+    try eval_internal eval_config help_info t command_line with
     | Parse_error.E e ->
       Printf.eprintf "%s" (Parse_error.to_string e);
       exit Parse_error.exit_code
-    | Usage -> exit 0
+    | Usage | Manpage -> exit 0
   ;;
 
   let run_singleton
     ?(eval_config = Eval_config.default)
+    ?(program_name = Program_name.Argv0)
     ?(help_style = Help_style.default)
+    ?version
     ?desc
     arg_parser
     =
-    run ~eval_config ~help_style (singleton ?desc arg_parser)
+    run ~eval_config ~program_name ~help_style ?version (singleton ?desc arg_parser)
   ;;
 
   let eval
     ?(eval_config = Eval_config.default)
     ?(program_name = Program_name.Argv0)
     ?(help_style = Help_style.default)
+    ?version
     t
     args
     =
+    let help_info = { Help_info.style = help_style; version } in
     eval_internal
       eval_config
-      help_style
+      help_info
       t
       { Command_line.Raw.args; program = Program_name.get program_name }
   ;;
