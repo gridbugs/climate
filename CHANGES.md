@@ -5,11 +5,11 @@
 ### Added
 
 - Allow help messages colours to be configured (#7)
-- Proof of concept of manpage generation (disabled in release as it's very incompletel) (#11)
+- Proof of concept of manpage generation (disabled in release as it's very incomplete) (#11)
 
 ### Changed
 
-- Changed default help message colour scheme to be more colour-blind readible
+- Changed default help message colour scheme to be more colour-blind readable
   and more visible on light and dark terminals (#7)
 - Changed description of `--help` argument.
 
