@@ -67,7 +67,9 @@ let () =
     ; arg_desc = { ansi_style_plain with color = Some `Cyan }
     }
   in
-  match Command.run ~help_style command with
+  match
+    Command.run ~program_name:(Literal "echo-ansi") ~version:"0.0.1" ~help_style command
+  with
   | `Completion -> print_endline (Command.completion_script_bash command)
   | `Main main -> main ()
 ;;

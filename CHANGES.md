@@ -5,6 +5,7 @@
 ### Added
 
 - Allow help messages colours to be configured (#7)
+- Proof of concept of manpage generation (#11)
 
 ### Changed
 
@@ -16,6 +17,7 @@
 
 - Remove superfluous style reset escape sequences (#7)
 - Don't apply formatting to trailing spaces in argument names in help messages (#8)
+- Print a readable error when the argument spec is invalid (#10)
 
 ## 0.3.0
 

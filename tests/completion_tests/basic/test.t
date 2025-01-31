@@ -7,6 +7,7 @@
   --baz
   --foo
   --help
+  --manpage
   -h
 
   $ x "basic --" \
@@ -15,6 +16,7 @@
   --baz
   --foo
   --help
+  --manpage
 
   $ x "basic --b" \
   >   "         ^"
@@ -36,6 +38,7 @@
   --baz
   --foo
   --help
+  --manpage
   -h
 
   $ x "basic --foo --bar " \
@@ -44,6 +47,7 @@
   --baz
   --foo
   --help
+  --manpage
   -h
 
   $ x "basic --foo --bar" \
