@@ -49,7 +49,6 @@ Make a fake .git directory with some branches.
   $ x "fake-git log -" \
   >   "              ^"
   --help
-  --manpage
   --pretty
   -h
   -p
@@ -57,7 +56,6 @@ Make a fake .git directory with some branches.
   $ x "fake-git log --" \
   >   "               ^"
   --help
-  --manpage
   --pretty
 
   $ x "fake-git log --pretty " \
@@ -81,7 +79,6 @@ Make a fake .git directory with some branches.
   $ x "fake-git log --pretty full foo " \
   >   "                               ^"
   --help
-  --manpage
   --pretty
   -h
   -p
@@ -97,13 +94,11 @@ Test that positional arguments and subcommands are both listed.
   $ x "fake-git bisect -" \
   >   "                 ^"
   --help
-  --manpage
   -h
 
   $ x "fake-git bisect start " \
   >   "                      ^"
   --help
-  --manpage
   -h
 
 Test the behaviour of arguments with no hints.

@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 ### Added
 
 - Allow help messages colours to be configured (#7)
-- Proof of concept of manpage generation (#11)
+- Proof of concept of manpage generation (disabled in release as it's very incompletel) (#11)
 
 ### Changed
 
