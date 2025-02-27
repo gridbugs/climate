@@ -1,3 +1,5 @@
+open! Import
+
 module Markup : sig
   type t =
     [ `P of string
@@ -18,13 +20,14 @@ module Prose : sig
     -> ?files:Markup.t list
     -> ?examples:Markup.t list
     -> ?authors:Markup.t list
+    -> ?extra:(string * Markup.t list) list
     -> unit
     -> t
 end
 
 type t =
   { prose : Prose.t
-  ; help : Help.t
+  ; spec : Command_doc_spec.t
   ; version : string option
   }
 

@@ -43,17 +43,23 @@ module Named = struct
       }
     ;;
 
-    let help_entry t =
+    let command_doc_spec t =
       if t.hidden
       then None
       else (
         let value =
           match t.has_param with
           | `No -> None
-          | `Yes_with_value_name name -> Some { Help.Value.name; required = true }
+          | `Yes_with_value_name name ->
+            Some { Command_doc_spec.Value.name; required = true }
         in
-        let name = { Help.Named_args.names = t.names; value; repeated = t.repeated } in
-        Some { Help.name; doc = t.doc })
+        Some
+          { Command_doc_spec.Named_arg.names = t.names
+          ; value
+          ; repeated = t.repeated
+          ; default_string = t.default_string
+          ; doc = t.doc
+          })
     ;;
   end
 
@@ -62,8 +68,8 @@ module Named = struct
   let empty = { infos = [] }
   let is_empty { infos } = List.is_empty infos
 
-  let help_entries { infos } : Help.Named_args.t =
-    List.rev infos |> List.filter_map ~f:Info.help_entry
+  let command_doc_spec { infos } =
+    List.rev infos |> List.filter_map ~f:Info.command_doc_spec
   ;;
 
   let get_info_by_name { infos } name =
@@ -123,23 +129,24 @@ module Positional = struct
     Option.is_none all_above_inclusive && Int.Map.is_empty others_by_index
   ;;
 
-  let help_entry_of_single_arg { required; value_name; doc; _ }
-    : Help.Positional_args.entry
+  let command_doc_spec_of_single_arg { required; value_name; doc; _ }
+    : Command_doc_spec.Positional_arg.t
     =
-    let name = { Help.Value.name = value_name; required } in
-    { Help.name; doc }
+    let value = { Command_doc_spec.Value.name = value_name; required } in
+    { Command_doc_spec.Positional_arg.value; doc }
   ;;
 
-  let help_entries { all_above_inclusive; others_by_index } =
+  let command_doc_spec { all_above_inclusive; others_by_index } =
     let fixed =
       Int.Map.bindings others_by_index
       |> List.map ~f:snd
-      |> List.map ~f:help_entry_of_single_arg
+      |> List.map ~f:command_doc_spec_of_single_arg
     in
     let repeated =
-      Option.map all_above_inclusive ~f:(fun { arg; _ } -> help_entry_of_single_arg arg)
+      Option.map all_above_inclusive ~f:(fun { arg; _ } ->
+        command_doc_spec_of_single_arg arg)
     in
-    { Help.Positional_args.fixed; repeated }
+    { Command_doc_spec.Positional_args.fixed; repeated }
   ;;
 
   let check_value_names index value_name1 value_name2 =
@@ -299,9 +306,9 @@ let create_flag names ~doc ~hidden ~repeated =
   create_named (Named.Info.flag names ~doc ~hidden ~repeated)
 ;;
 
-let help_sections { named; positional } =
-  { Help.Arg_sections.named_args = Named.help_entries named
-  ; positional_args = Positional.help_entries positional
+let command_doc_spec { named; positional } =
+  { Command_doc_spec.Args.named = Named.command_doc_spec named
+  ; positional = Positional.command_doc_spec positional
   }
 ;;
 

@@ -58,6 +58,7 @@ module Manpage : sig
     -> ?files:markup list
     -> ?examples:markup list
     -> ?authors:markup list
+    -> ?extra:(string * markup list) list
     -> unit
     -> prose
 end
