@@ -50,5 +50,5 @@ let to_troff_string { prose; help; version } =
        (Option.value version ~default:""))
     (String.capitalize_ascii help.program_name)
     command_name
-    (Option.map help.desc ~f:(sprintf " - %s") |> Option.value ~default:"")
+    (Option.map help.doc ~f:(sprintf " - %s") |> Option.value ~default:"")
 ;;

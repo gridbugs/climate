@@ -27,17 +27,17 @@ let checkout =
 
 let commit =
   let open Arg_parser in
-  let+ _amend = flag [ "amend" ] ~desc:"Amend a commit"
-  and+ _all = flag [ "a" ] ~desc:"Commit all changes"
+  let+ _amend = flag [ "amend" ] ~doc:"Amend a commit"
+  and+ _all = flag [ "a" ] ~doc:"Commit all changes"
   and+ _branch = named_opt [ "b"; "branch" ] branch_conv
   and+ _message =
     named_opt
       [ "m"; "message" ]
       string
-      ~desc:
+      ~doc:
         "The commit message. This description is extra long to exercise text wrapping in \
          help messages."
-  and+ _files = pos_all file ~desc:"The files to commit" in
+  and+ _files = pos_all file ~doc:"The files to commit" in
   ()
 ;;
 
@@ -47,7 +47,7 @@ let log =
     named_opt
       [ "pretty"; "p" ]
       (string_enum [ "full"; "fuller"; "short"; "oneline" ])
-      ~desc:"foo"
+      ~doc:"foo"
   in
   ()
 ;;
@@ -65,18 +65,18 @@ let () =
   let open Command in
   group
     ~prose:(Manpage.prose ~description:[] ())
-    ~desc:"Fake version control"
-    [ subcommand "config" (singleton Arg_parser.unit ~desc:"Configure the tool.")
-    ; subcommand "checkout" (singleton checkout ~desc:"Check out a revision.")
-    ; subcommand "commit" (singleton commit ~desc:"Commit your changes.")
-    ; subcommand "log" (singleton log ~desc:"List recent commits.")
+    ~doc:"Fake version control"
+    [ subcommand "config" (singleton Arg_parser.unit ~doc:"Configure the tool.")
+    ; subcommand "checkout" (singleton checkout ~doc:"Check out a revision.")
+    ; subcommand "commit" (singleton commit ~doc:"Commit your changes.")
+    ; subcommand "log" (singleton log ~doc:"List recent commits.")
     ; subcommand
         "bisect"
         (group
            ~default_arg_parser:bisect_common
-           ~desc:"Binary search through previous commits."
-           [ subcommand "start" (singleton bisect_common ~desc:"Start a bisect.")
-           ; subcommand "reset" (singleton bisect_common ~desc:"Stop a bisect.")
+           ~doc:"Binary search through previous commits."
+           [ subcommand "start" (singleton bisect_common ~doc:"Start a bisect.")
+           ; subcommand "reset" (singleton bisect_common ~doc:"Stop a bisect.")
            ])
     ; subcommand ~hidden:true "__internal" print_completion_script_bash
     ]

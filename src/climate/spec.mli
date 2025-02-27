@@ -17,7 +17,7 @@ module Named : sig
       ; required : bool
       (** Just determines if argument is shown in
           usage string (not used for error checking) *)
-      ; desc : string option (** Description to display in help messages *)
+      ; doc : string option (** Description to display in help messages *)
       ; completion : untyped_completion_hint option
       (** Completion hint for this argument *)
       ; hidden : bool (** If true, then this argument doesn't show up
@@ -60,7 +60,7 @@ module Positional : sig
     -> value_name:string
     -> required:bool
     -> completion:untyped_completion_hint option
-    -> desc:string option
+    -> doc:string option
     -> t
 
   (** Create a spec with an unlimited number of positional arguments
@@ -70,7 +70,7 @@ module Positional : sig
     :  int
     -> value_name:string
     -> completion:untyped_completion_hint option
-    -> desc:string option
+    -> doc:string option
     -> t
 
   (** Create a spec with positional arguments from index 0 up to but
@@ -80,7 +80,7 @@ module Positional : sig
     -> value_name:string
     -> required:bool
     -> completion:untyped_completion_hint option
-    -> desc:string option
+    -> doc:string option
     -> t
 end
 
@@ -110,7 +110,7 @@ val create_named : Named.Info.t -> t
     doesn't take a value (ie. a flag). *)
 val create_flag
   :  Name.t Nonempty_list.t
-  -> desc:string option
+  -> doc:string option
   -> hidden:bool
   -> repeated:bool
   -> t

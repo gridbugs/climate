@@ -2,18 +2,18 @@ open Import
 
 module Style = struct
   type t =
-    { program_desc : Ansi_style.t
+    { program_doc : Ansi_style.t
     ; usage : Ansi_style.t
     ; arg_name : Ansi_style.t
-    ; arg_desc : Ansi_style.t
+    ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
     }
 
   let plain =
-    { program_desc = Ansi_style.default
+    { program_doc = Ansi_style.default
     ; usage = Ansi_style.default
     ; arg_name = Ansi_style.default
-    ; arg_desc = Ansi_style.default
+    ; arg_doc = Ansi_style.default
     ; section_heading = Ansi_style.default
     }
   ;;
@@ -28,7 +28,7 @@ end
 
 type 'name entry =
   { name : 'name
-  ; desc : string option
+  ; doc : string option
   }
 
 let pp_print_elipsis ppf () = Format.pp_print_string ppf "..."
@@ -113,7 +113,7 @@ module Print = struct
     type t =
       { names : Names.t
       ; value : Value.t option
-      ; desc : string option
+      ; doc : string option
       ; repeated : bool
       }
 
@@ -139,7 +139,7 @@ module Print = struct
       ppf
       ~at_least_one_left_name
       ~right_names_left_padding
-      ~desc_left_padding
+      ~doc_left_padding
       t
       =
       pp_print_spaces ppf indent;
@@ -149,11 +149,11 @@ module Print = struct
       Ansi_style.pp_with_style style.arg_name ppf ~f:(fun ppf ->
         Format.pp_print_string ppf names_value_string);
       pp_print_spaces ppf 2;
-      Option.iter t.desc ~f:(fun desc ->
-        let padding = desc_left_padding - String.length names_value_string in
+      Option.iter t.doc ~f:(fun doc ->
+        let padding = doc_left_padding - String.length names_value_string in
         pp_print_spaces ppf padding;
-        Ansi_style.pp_with_style style.arg_desc ppf ~f:(fun ppf ->
-          Format.pp_print_string ppf desc));
+        Ansi_style.pp_with_style style.arg_doc ppf ~f:(fun ppf ->
+          Format.pp_print_string ppf doc));
       Format.pp_print_newline ppf ()
     ;;
   end
@@ -195,7 +195,7 @@ module Print = struct
           Format.pp_print_string ppf t.section_heading);
         pp_print_newlines ppf 1;
         let right_names_left_padding = max_left_length t in
-        let desc_left_padding =
+        let doc_left_padding =
           max_name_length ~at_least_one_left_name ~right_names_left_padding t
         in
         List.iter t.entries ~f:(fun entry ->
@@ -204,7 +204,7 @@ module Print = struct
             ppf
             ~at_least_one_left_name
             ~right_names_left_padding
-            ~desc_left_padding
+            ~doc_left_padding
             entry))
     ;;
   end
@@ -221,17 +221,17 @@ module Positional_args = struct
 
   let to_print_section { fixed; repeated } =
     let entries =
-      List.map fixed ~f:(fun { name; desc } ->
+      List.map fixed ~f:(fun { name; doc } ->
         { Print.Entry.names = Print.Names.empty
         ; value = Some name
-        ; desc
+        ; doc
         ; repeated = false
         })
       |> List.append
-           (Option.map repeated ~f:(fun { name; desc } ->
+           (Option.map repeated ~f:(fun { name; doc } ->
               { Print.Entry.names = Print.Names.empty
               ; value = Some name
-              ; desc
+              ; doc
               ; repeated = true
               })
             |> Option.to_list)
@@ -265,7 +265,7 @@ module Named_args = struct
   let to_print_section t =
     { Print.Section.section_heading = "Options:"
     ; entries =
-        List.map t ~f:(fun { name = { names; value; repeated }; desc } ->
+        List.map t ~f:(fun { name = { names; value; repeated }; doc } ->
           let names = Nonempty_list.to_list names in
           let short_names =
             List.filter names ~f:Name.is_short |> List.map ~f:Name.to_string_with_dashes
@@ -274,7 +274,7 @@ module Named_args = struct
             List.filter names ~f:Name.is_long |> List.map ~f:Name.to_string_with_dashes
           in
           let names = { Print.Names.left = short_names; right = long_names } in
-          { Print.Entry.names; value; desc; repeated })
+          { Print.Entry.names; value; doc; repeated })
     }
   ;;
 
@@ -289,10 +289,10 @@ module Subcommands = struct
   let to_print_section t =
     { Print.Section.section_heading = "Commands:"
     ; entries =
-        List.map t ~f:(fun { name; desc } ->
+        List.map t ~f:(fun { name; doc } ->
           { Print.Entry.names = Print.Names.of_right [ Name.to_string name ]
           ; value = None
-          ; desc
+          ; doc
           ; repeated = false
           })
     }
@@ -329,7 +329,7 @@ end
 type t =
   { program_name : string
   ; subcommand : string list
-  ; desc : string option
+  ; doc : string option
   ; sections : Sections.t
   }
 
@@ -353,9 +353,9 @@ let pp_usage (style : Style.t) ppf t =
 ;;
 
 let pp (style : Style.t) ppf t =
-  Option.iter t.desc ~f:(fun desc ->
-    Ansi_style.pp_with_style style.program_desc ppf ~f:(fun ppf ->
-      Format.pp_print_string ppf desc);
+  Option.iter t.doc ~f:(fun doc ->
+    Ansi_style.pp_with_style style.program_doc ppf ~f:(fun ppf ->
+      Format.pp_print_string ppf doc);
     pp_print_newlines ppf 2);
   pp_usage style ppf t;
   pp_print_newlines ppf 1;

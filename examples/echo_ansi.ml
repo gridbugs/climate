@@ -41,16 +41,16 @@ let main ~bold ~underline ~color words =
 
 let () =
   let command =
-    Command.singleton ~desc:"Echo with style!"
+    Command.singleton ~doc:"Echo with style!"
     @@
     let open Arg_parser in
-    (* Describe and parse the command line arguments:*)
-    let+ bold = flag [ "bold" ] ~desc:"Make the text bold"
-    and+ underline = flag [ "underline" ] ~desc:"Underline the text"
-    and+ color = named_opt [ "color" ] Color.conv ~desc:"Set the text color"
+    (* Describe and parse the command line arguments: *)
+    let+ bold = flag [ "bold" ] ~doc:"Make the text bold"
+    and+ underline = flag [ "underline" ] ~doc:"Underline the text"
+    and+ color = named_opt [ "color" ] Color.conv ~doc:"Set the text color"
     and+ words = pos_all string
     and+ completion =
-      flag [ "completion" ] ~desc:"Print this program's completion script and exit"
+      flag [ "completion" ] ~doc:"Print this program's completion script and exit"
     in
     if completion
     then `Completion
@@ -60,11 +60,11 @@ let () =
      that we should print the completion script. *)
   let help_style =
     let open Help_style in
-    { program_desc = { ansi_style_plain with color = Some `Green }
+    { program_doc = { ansi_style_plain with color = Some `Green }
     ; usage = { ansi_style_plain with color = Some `Yellow }
     ; section_heading = { ansi_style_plain with color = Some `Red }
     ; arg_name = { ansi_style_plain with color = Some `Blue }
-    ; arg_desc = { ansi_style_plain with color = Some `Cyan }
+    ; arg_doc = { ansi_style_plain with color = Some `Cyan }
     }
   in
   match

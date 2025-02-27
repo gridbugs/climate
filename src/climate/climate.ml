@@ -68,10 +68,10 @@ exception Manpage
 module Subcommand = struct
   type t =
     { name : Name.t
-    ; desc : string option
+    ; doc : string option
     }
 
-  let help_entry { name; desc } : Help.Subcommands.entry = { Help.name; desc }
+  let help_entry { name; doc } : Help.Subcommands.entry = { Help.name; doc }
 end
 
 module Arg_parser = struct
@@ -416,14 +416,14 @@ module Arg_parser = struct
               E (Named_opt_appeared_multiple_times (info.names, List.length many))))
   ;;
 
-  let named_multi ?desc ?value_name ?hidden ?completion names conv =
+  let named_multi ?doc ?value_name ?hidden ?completion names conv =
     named_multi_gen
       { names = names_of_strings names
       ; has_param =
           `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = false
-      ; desc
+      ; doc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
       ; repeated = true
@@ -433,14 +433,14 @@ module Arg_parser = struct
 
   (* Like [named_opt] but takes its arguments as [Name.t]s rather than
      as strings is it's intended for use within this library. *)
-  let named_opt_for_internal ?desc ?value_name ?hidden ?completion names conv =
+  let named_opt_for_internal ?doc ?value_name ?hidden ?completion names conv =
     named_opt_gen
       { names
       ; has_param =
           `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = false
-      ; desc
+      ; doc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
       ; repeated = false
@@ -448,9 +448,9 @@ module Arg_parser = struct
       conv
   ;;
 
-  let named_opt ?desc ?value_name ?hidden ?completion names conv =
+  let named_opt ?doc ?value_name ?hidden ?completion names conv =
     named_opt_for_internal
-      ?desc
+      ?doc
       ?value_name
       ?hidden
       ?completion
@@ -460,7 +460,7 @@ module Arg_parser = struct
   ;;
 
   let named_with_default_gen
-    ?desc
+    ?doc
     ?value_name
     ?hidden
     ?completion
@@ -475,7 +475,7 @@ module Arg_parser = struct
           `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = Some (value_to_string conv.print default)
       ; required = false
-      ; desc
+      ; doc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
       ; repeated = false
@@ -487,14 +487,14 @@ module Arg_parser = struct
 
   let named_with_default = named_with_default_gen ~allow_many:false
 
-  let named_req ?desc ?value_name ?hidden ?completion names conv =
+  let named_req ?doc ?value_name ?hidden ?completion names conv =
     named_multi_gen
       { names = names_of_strings names
       ; has_param =
           `Yes_with_value_name (Option.value value_name ~default:conv.default_value_name)
       ; default_string = None
       ; required = true
-      ; desc
+      ; doc
       ; completion = conv_untyped_completion_opt_with_default conv completion
       ; hidden = Option.value hidden ~default:false
       ; repeated = false
@@ -510,12 +510,12 @@ module Arg_parser = struct
               (Named_req_appeared_multiple_times (names_of_strings names, List.length many))))
   ;;
 
-  let flag_count ?desc ?hidden names =
+  let flag_count ?doc ?hidden names =
     let names = names_of_strings names in
     { arg_spec =
         Spec.create_flag
           names
-          ~desc
+          ~doc
           ~hidden:(Option.value hidden ~default:false)
           ~repeated:true
     ; arg_compute =
@@ -524,8 +524,8 @@ module Arg_parser = struct
     }
   ;;
 
-  let flag_gen ?desc names ~allow_many =
-    flag_count ?desc names
+  let flag_gen ?doc names ~allow_many =
+    flag_count ?doc names
     |> map ~f:(function
       | 0 -> false
       | 1 -> true
@@ -538,7 +538,7 @@ module Arg_parser = struct
 
   let flag = flag_gen ~allow_many:false
 
-  let pos_single_gen i conv ~desc ~value_name ~required ~completion =
+  let pos_single_gen i conv ~doc ~value_name ~required ~completion =
     let i =
       match Nonnegative_int.of_int i with
       | Some _ -> i
@@ -551,7 +551,7 @@ module Arg_parser = struct
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
-             ~desc)
+             ~doc)
     ; arg_compute =
         (fun context _help_info ->
           Raw_arg_table.get_pos context.raw_arg_table i
@@ -564,25 +564,25 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_opt ?desc ?value_name ?completion i conv =
-    pos_single_gen i conv ~desc ~value_name ~required:false ~completion
+  let pos_opt ?doc ?value_name ?completion i conv =
+    pos_single_gen i conv ~doc ~value_name ~required:false ~completion
   ;;
 
-  let pos_with_default ?desc ?value_name ?completion i conv ~default =
-    pos_opt ?desc ?value_name ?completion i conv
+  let pos_with_default ?doc ?value_name ?completion i conv ~default =
+    pos_opt ?doc ?value_name ?completion i conv
     |> map ~f:(function
       | Some x -> x
       | None -> default)
   ;;
 
-  let pos_req ?desc ?value_name ?completion i conv =
-    pos_single_gen i conv ~desc ~value_name ~required:true ~completion
+  let pos_req ?doc ?value_name ?completion i conv =
+    pos_single_gen i conv ~doc ~value_name ~required:true ~completion
     |> map ~f:(function
       | Some x -> x
       | None -> raise Parse_error.(E (Pos_req_missing i)))
   ;;
 
-  let pos_left_gen i conv ~desc ~value_name ~required ~completion =
+  let pos_left_gen i conv ~doc ~value_name ~required ~completion =
     { arg_spec =
         Spec.create_positional
           (Spec.Positional.all_below_exclusive
@@ -590,7 +590,7 @@ module Arg_parser = struct
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~required
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
-             ~desc)
+             ~doc)
     ; arg_compute =
         (fun context _help_info ->
           let left, _ =
@@ -605,18 +605,18 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_left ?desc ?value_name ?completion i conv =
-    pos_left_gen i conv ~desc ~value_name ~required:false ~completion
+  let pos_left ?doc ?value_name ?completion i conv =
+    pos_left_gen i conv ~doc ~value_name ~required:false ~completion
   ;;
 
-  let pos_right_inclusive ?desc ?value_name ?completion i_inclusive conv =
+  let pos_right_inclusive ?doc ?value_name ?completion i_inclusive conv =
     { arg_spec =
         Spec.create_positional
           (Spec.Positional.all_above_inclusive
              i_inclusive
              ~value_name:(Option.value value_name ~default:conv.default_value_name)
              ~completion:(conv_untyped_completion_opt_with_default conv completion)
-             ~desc)
+             ~doc)
     ; arg_compute =
         (fun context _help_info ->
           let _, right =
@@ -631,17 +631,17 @@ module Arg_parser = struct
     }
   ;;
 
-  let pos_right ?desc ?value_name ?completion i_exclusive conv =
-    pos_right_inclusive ?desc ?value_name ?completion (i_exclusive + 1) conv
+  let pos_right ?doc ?value_name ?completion i_exclusive conv =
+    pos_right_inclusive ?doc ?value_name ?completion (i_exclusive + 1) conv
   ;;
 
-  let pos_all ?desc ?value_name ?completion conv =
-    pos_right_inclusive ?desc ?value_name ?completion 0 conv
+  let pos_all ?doc ?value_name ?completion conv =
+    pos_right_inclusive ?doc ?value_name ?completion 0 conv
   ;;
 
   let validate t = Spec.validate t.arg_spec
 
-  let help arg_spec (command_line : Command_line.Rich.t) ~desc ~child_subcommands =
+  let help arg_spec (command_line : Command_line.Rich.t) ~doc ~child_subcommands =
     let sections =
       { Help.Sections.arg_sections = Spec.help_sections arg_spec
       ; subcommands = List.map child_subcommands ~f:Subcommand.help_entry
@@ -649,28 +649,28 @@ module Arg_parser = struct
     in
     { Help.program_name = command_line.program
     ; subcommand = command_line.subcommand
-    ; desc
+    ; doc
     ; sections
     }
   ;;
 
-  let pp_help ppf help_style arg_spec command_line ~desc ~child_subcommands =
-    Help.pp help_style ppf (help arg_spec command_line ~desc ~child_subcommands)
+  let pp_help ppf help_style arg_spec command_line ~doc ~child_subcommands =
+    Help.pp help_style ppf (help arg_spec command_line ~doc ~child_subcommands)
   ;;
 
   let help_spec =
     Spec.create_flag
       Built_in.help_names
-      ~desc:(Some "Show this help message.")
+      ~doc:(Some "Show this help message.")
       ~hidden:false
       ~repeated:false
   ;;
 
   let manpage_spec =
-    Spec.create_flag Built_in.manpage_names ~desc:None ~hidden:true ~repeated:false
+    Spec.create_flag Built_in.manpage_names ~doc:None ~hidden:true ~repeated:false
   ;;
 
-  let usage ~desc ~child_subcommands =
+  let usage ~doc ~child_subcommands =
     { arg_spec = Spec.empty
     ; arg_compute =
         (fun context help_info ->
@@ -679,13 +679,13 @@ module Arg_parser = struct
             help_info.style
             help_spec
             context.command_line
-            ~desc
+            ~doc
             ~child_subcommands;
           raise Usage)
     }
   ;;
 
-  let add_help_and_manpage { arg_spec; arg_compute } ~desc ~child_subcommands ~prose =
+  let add_help_and_manpage { arg_spec; arg_compute } ~doc ~child_subcommands ~prose =
     let arg_spec = arg_spec |> Spec.merge help_spec |> Spec.merge manpage_spec in
     { arg_spec
     ; arg_compute =
@@ -698,7 +698,7 @@ module Arg_parser = struct
               help_info.style
               arg_spec
               context.command_line
-              ~desc
+              ~doc
               ~child_subcommands;
             raise Usage)
           else if Raw_arg_table.get_flag_count_names
@@ -707,7 +707,7 @@ module Arg_parser = struct
                   > 0
           then (
             let prose = Option.value prose ~default:Manpage.Prose.empty in
-            let help = help arg_spec context.command_line ~desc ~child_subcommands in
+            let help = help arg_spec context.command_line ~doc ~child_subcommands in
             let manpage = { Manpage.prose; help; version = help_info.version } in
             print_endline (Manpage.to_troff_string manpage);
             raise Manpage)
@@ -715,9 +715,9 @@ module Arg_parser = struct
     }
   ;;
 
-  let finalize t ~desc ~child_subcommands ~prose =
+  let finalize t ~doc ~child_subcommands ~prose =
     validate t;
-    add_help_and_manpage t ~desc ~child_subcommands ~prose
+    add_help_and_manpage t ~doc ~child_subcommands ~prose
   ;;
 
   module Reentrant = struct
@@ -758,7 +758,7 @@ module Completion_config = struct
     let open Arg_parser in
     let+ program_name =
       named_opt
-        ~desc:
+        ~doc:
           "Name to register this completion script with in the shell. Should be the name \
            of this program's executable. Will default to argv[0]."
         ~value_name:"PROGRAM"
@@ -766,7 +766,7 @@ module Completion_config = struct
         string
     and+ program_exe_for_reentrant_query =
       named_opt
-        ~desc:
+        ~doc:
           "Program to run when executing reentrant queries. This should usually be the \
            same as program-name. Will default to argv[0]. Note that it defaults to \
            argv[0] rather than the value of program-name to help with development \
@@ -778,7 +778,7 @@ module Completion_config = struct
         string
     and+ global_symbol_prefix =
       named_opt
-        ~desc:
+        ~doc:
           "Prefix to use for global symbols in generated completion script. Defaults to \
            \"__climate_complete\" followed by a random int."
         ~value_name:"PREFIX"
@@ -786,31 +786,31 @@ module Completion_config = struct
         string
     and+ no_command_hash_in_function_names =
       flag
-        ~desc:
+        ~doc:
           "Don't add hashes of subcommands to the names of functions that compute \
            suggestions. Hashes are added by default to prevent collisions between \
            generated functions, but such collisions are rare in practice and disabling \
            hashes makes the generated code easier to read."
         [ "no-command-hash-in-function-names" ]
     and+ no_comments =
-      flag ~desc:"Omit comments from the generated completion script." [ "no-comments" ]
+      flag ~doc:"Omit comments from the generated completion script." [ "no-comments" ]
     and+ no_whitespace =
       flag
-        ~desc:"Remove unnecessary whitespace from generated completion script."
+        ~doc:"Remove unnecessary whitespace from generated completion script."
         [ "no-whitespace" ]
     and+ minify_global_names =
       flag
-        ~desc:
+        ~doc:
           "Rename global variables and functions in completion script to be as short as \
            possible."
         [ "minify-global-names" ]
     and+ minify_local_variables =
       flag
-        ~desc:"Use short names for local variables in generated bash script."
+        ~doc:"Use short names for local variables in generated bash script."
         [ "minify-local-variables" ]
     and+ optimize_case_statements =
       flag
-        ~desc:
+        ~doc:
           "Combine sequences of contiguous case bodies in cases statements, merging \
            their patterns."
         [ "optimize-case-statements" ]
@@ -871,7 +871,7 @@ end
 module Command = struct
   type internal = Print_completion_script_bash
 
-  let internal_desc = function
+  let internal_doc = function
     | Print_completion_script_bash -> "Print the bash completion script for this program."
   ;;
 
@@ -885,12 +885,12 @@ module Command = struct
   type 'a t =
     | Singleton of
         { arg_parser : 'a Arg_parser.t
-        ; desc : string option
+        ; doc : string option
         }
     | Group of
         { children : 'a subcommand list
         ; default_arg_parser : 'a Arg_parser.t
-        ; desc : string option
+        ; doc : string option
         }
     | Internal of internal
 
@@ -899,16 +899,16 @@ module Command = struct
     ; command : 'a t
     }
 
-  let command_desc = function
-    | Singleton { desc; _ } | Group { desc; _ } -> desc
-    | Internal internal -> Some (internal_desc internal)
+  let command_doc = function
+    | Singleton { doc; _ } | Group { doc; _ } -> doc
+    | Internal internal -> Some (internal_doc internal)
   ;;
 
-  let singleton ?desc ?prose arg_parser =
-    let desc = desc in
+  let singleton ?doc ?prose arg_parser =
+    let doc = doc in
     Singleton
-      { arg_parser = Arg_parser.finalize arg_parser ~desc ~child_subcommands:[] ~prose
-      ; desc
+      { arg_parser = Arg_parser.finalize arg_parser ~doc ~child_subcommands:[] ~prose
+      ; doc
       }
   ;;
 
@@ -916,22 +916,22 @@ module Command = struct
     { info = { Subcommand_info.name = name_of_string_exn name_string; hidden }; command }
   ;;
 
-  let group ?default_arg_parser ?desc ?prose children =
+  let group ?default_arg_parser ?doc ?prose children =
     let child_subcommands =
       List.filter_map children ~f:(fun { info; command } ->
         if info.hidden
         then None
-        else Some { Subcommand.name = info.name; desc = command_desc command })
+        else Some { Subcommand.name = info.name; doc = command_doc command })
     in
     let default_arg_parser =
       match default_arg_parser with
-      | None -> Arg_parser.usage ~desc ~child_subcommands
+      | None -> Arg_parser.usage ~doc ~child_subcommands
       | Some default_arg_parser -> default_arg_parser
     in
     let default_arg_parser =
-      Arg_parser.finalize default_arg_parser ~desc ~child_subcommands ~prose
+      Arg_parser.finalize default_arg_parser ~doc ~child_subcommands ~prose
     in
-    Group { children; default_arg_parser; desc }
+    Group { children; default_arg_parser; doc }
   ;;
 
   let print_completion_script_bash = Internal Print_completion_script_bash
@@ -944,10 +944,10 @@ module Command = struct
 
   let rec traverse t args subcommand_acc =
     match t, args with
-    | Singleton { arg_parser; desc = _ }, args ->
+    | Singleton { arg_parser; doc = _ }, args ->
       Ok
         { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
-    | Group { children; default_arg_parser; desc = _ }, x :: xs ->
+    | Group { children; default_arg_parser; doc = _ }, x :: xs ->
       let subcommand =
         List.find_map children ~f:(fun { info = { name; _ }; command } ->
           if String.equal (Name.to_string name) x then Some command else None)
@@ -960,7 +960,7 @@ module Command = struct
            ; args = x :: xs
            ; subcommand = List.rev subcommand_acc
            })
-    | Group { children = _; default_arg_parser; desc = _ }, [] ->
+    | Group { children = _; default_arg_parser; doc = _ }, [] ->
       Ok
         { operation = `Arg_parser default_arg_parser
         ; args = []
@@ -971,7 +971,7 @@ module Command = struct
   ;;
 
   let rec completion_spec = function
-    | Singleton { arg_parser; desc = _ } ->
+    | Singleton { arg_parser; doc = _ } ->
       let parser_spec = Spec.to_completion_parser_spec arg_parser.arg_spec in
       { Completion_spec.parser_spec; subcommands = [] }
     | Internal Print_completion_script_bash ->
@@ -979,7 +979,7 @@ module Command = struct
         Spec.to_completion_parser_spec Completion_config.arg_parser.arg_spec
       in
       { Completion_spec.parser_spec; subcommands = [] }
-    | Group { children; default_arg_parser; desc = _ } ->
+    | Group { children; default_arg_parser; doc = _ } ->
       let parser_spec = Spec.to_completion_parser_spec default_arg_parser.arg_spec in
       let subcommands =
         List.filter_map children ~f:(fun { info; command } ->
@@ -1109,7 +1109,7 @@ module Command = struct
       let arg_parser =
         Arg_parser.finalize
           Completion_config.arg_parser
-          ~desc:(Some (internal_desc Print_completion_script_bash))
+          ~doc:(Some (internal_doc Print_completion_script_bash))
           ~child_subcommands:[]
           ~prose:None
       in
@@ -1164,10 +1164,10 @@ module Command = struct
     ?(program_name = Program_name.Argv0)
     ?(help_style = Help_style.default)
     ?version
-    ?desc
+    ?doc
     arg_parser
     =
-    run ~eval_config ~program_name ~help_style ?version (singleton ?desc arg_parser)
+    run ~eval_config ~program_name ~help_style ?version (singleton ?doc arg_parser)
   ;;
 
   let eval
