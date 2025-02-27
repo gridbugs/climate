@@ -44,8 +44,8 @@ end
 
 module Manpage : sig
   type markup =
-    [ `Paragraph of string
-    | `Preformatted of string
+    [ `P of string
+    | `Pre of string
     ]
 
   (** The parts of a manpage that are hand-written and not generated from the

@@ -64,7 +64,14 @@ let bisect_common =
 let () =
   let open Command in
   group
-    ~prose:(Manpage.prose ~description:[] ())
+    ~prose:
+      (Manpage.prose
+         ~description:
+           [ `P
+               "An imitation of a version control tool with subcommands similar to those \
+                of git."
+           ]
+         ())
     ~doc:"Fake version control"
     [ subcommand "config" (singleton Arg_parser.unit ~doc:"Configure the tool.")
     ; subcommand "checkout" (singleton checkout ~doc:"Check out a revision.")
@@ -80,5 +87,5 @@ let () =
            ])
     ; subcommand ~hidden:true "__internal" print_completion_script_bash
     ]
-  |> run
+  |> run ~program_name:(Literal "fake-git") ~version:"0.1.0"
 ;;
