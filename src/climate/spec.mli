@@ -115,7 +115,7 @@ val create_flag
   -> repeated:bool
   -> t
 
-val help_sections : t -> Help.Arg_sections.t
+val command_doc_spec : t -> Command_doc_spec.Args.t
 
 val to_completion_parser_spec
   :  t

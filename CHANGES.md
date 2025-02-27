@@ -5,6 +5,7 @@
 ### Changed
 
 - Rename `desc` in APIs to `doc` to avoid confusion with the `description` field of manpages. (#12)
+- Basic manpage generation (#13)
 
 ## 0.4.0
 

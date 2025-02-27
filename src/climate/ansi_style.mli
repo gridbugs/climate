@@ -1,3 +1,5 @@
+open! Import
+
 module Color : sig
   type t =
     [ `Black

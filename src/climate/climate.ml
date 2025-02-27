@@ -69,9 +69,13 @@ module Subcommand = struct
   type t =
     { name : Name.t
     ; doc : string option
+    ; arg_spec : Spec.t
     }
 
-  let help_entry { name; doc } : Help.Subcommands.entry = { Help.name; doc }
+  let command_doc_spec { name; doc; arg_spec } =
+    let args = Spec.command_doc_spec arg_spec in
+    { Command_doc_spec.Subcommand.name; doc; args }
+  ;;
 end
 
 module Arg_parser = struct
@@ -641,21 +645,27 @@ module Arg_parser = struct
 
   let validate t = Spec.validate t.arg_spec
 
-  let help arg_spec (command_line : Command_line.Rich.t) ~doc ~child_subcommands =
-    let sections =
-      { Help.Sections.arg_sections = Spec.help_sections arg_spec
-      ; subcommands = List.map child_subcommands ~f:Subcommand.help_entry
-      }
-    in
-    { Help.program_name = command_line.program
+  let command_doc_spec
+    arg_spec
+    (command_line : Command_line.Rich.t)
+    ~doc
+    ~child_subcommands
+    =
+    let args = Spec.command_doc_spec arg_spec in
+    let subcommands = List.map child_subcommands ~f:Subcommand.command_doc_spec in
+    { Command_doc_spec.program_name = command_line.program
     ; subcommand = command_line.subcommand
     ; doc
-    ; sections
+    ; args
+    ; subcommands
     }
   ;;
 
   let pp_help ppf help_style arg_spec command_line ~doc ~child_subcommands =
-    Help.pp help_style ppf (help arg_spec command_line ~doc ~child_subcommands)
+    Help.pp
+      help_style
+      ppf
+      (command_doc_spec arg_spec command_line ~doc ~child_subcommands)
   ;;
 
   let help_spec =
@@ -707,8 +717,10 @@ module Arg_parser = struct
                   > 0
           then (
             let prose = Option.value prose ~default:Manpage.Prose.empty in
-            let help = help arg_spec context.command_line ~doc ~child_subcommands in
-            let manpage = { Manpage.prose; help; version = help_info.version } in
+            let spec =
+              command_doc_spec arg_spec context.command_line ~doc ~child_subcommands
+            in
+            let manpage = { Manpage.prose; spec; version = help_info.version } in
             print_endline (Manpage.to_troff_string manpage);
             raise Manpage)
           else arg_compute context help_info)
@@ -875,6 +887,10 @@ module Command = struct
     | Print_completion_script_bash -> "Print the bash completion script for this program."
   ;;
 
+  let internal_arg_spec = function
+    | Print_completion_script_bash -> Completion_config.arg_parser.arg_spec
+  ;;
+
   module Subcommand_info = struct
     type t =
       { name : Name.t
@@ -904,6 +920,12 @@ module Command = struct
     | Internal internal -> Some (internal_doc internal)
   ;;
 
+  let command_arg_spec = function
+    | Singleton { arg_parser; _ } -> arg_parser.arg_spec
+    | Group { default_arg_parser; _ } -> default_arg_parser.arg_spec
+    | Internal internal -> internal_arg_spec internal
+  ;;
+
   let singleton ?doc ?prose arg_parser =
     let doc = doc in
     Singleton
@@ -921,7 +943,12 @@ module Command = struct
       List.filter_map children ~f:(fun { info; command } ->
         if info.hidden
         then None
-        else Some { Subcommand.name = info.name; doc = command_doc command })
+        else
+          Some
+            { Subcommand.name = info.name
+            ; doc = command_doc command
+            ; arg_spec = command_arg_spec command
+            })
     in
     let default_arg_parser =
       match default_arg_parser with

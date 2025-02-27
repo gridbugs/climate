@@ -1,4 +1,5 @@
-open Import
+open! Import
+module Value = Command_doc_spec.Value
 
 module Style = struct
   type t =
@@ -26,12 +27,7 @@ module Style = struct
   ;;
 end
 
-type 'name entry =
-  { name : 'name
-  ; doc : string option
-  }
-
-let pp_print_elipsis ppf () = Format.pp_print_string ppf "..."
+let pp_print_elipsis ppf () = Format.pp_print_string ppf "…"
 
 let rec pp_print_newlines ppf = function
   | n when n <= 0 -> ()
@@ -49,19 +45,6 @@ let rec pp_print_spaces ppf = function
     Format.pp_print_string ppf " ";
     pp_print_spaces ppf (n - 1)
 ;;
-
-module Value = struct
-  type t =
-    { name : string
-    ; required : bool
-    }
-
-  let pp ppf t =
-    if t.required
-    then Format.fprintf ppf "<%s>" t.name
-    else Format.fprintf ppf "[%s]" t.name
-  ;;
-end
 
 module Print = struct
   module Names = struct
@@ -124,7 +107,7 @@ module Print = struct
       then Names.pp_padded ppf ~at_least_one_left_name ~right_names_left_padding t.names;
       Option.iter t.value ~f:(fun value ->
         if not (Names.is_empty t.names) then pp_print_spaces ppf 1;
-        Value.pp ppf value;
+        Value.pp ~format_name:Fun.id ppf value;
         if t.repeated then pp_print_elipsis ppf ())
     ;;
 
@@ -211,26 +194,20 @@ module Print = struct
 end
 
 module Positional_args = struct
-  type name = Value.t
-  type nonrec entry = name entry
-
-  type t =
-    { fixed : entry list
-    ; repeated : entry option
-    }
+  include Command_doc_spec.Positional_args
 
   let to_print_section { fixed; repeated } =
     let entries =
-      List.map fixed ~f:(fun { name; doc } ->
+      List.map fixed ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
         { Print.Entry.names = Print.Names.empty
-        ; value = Some name
+        ; value = Some value
         ; doc
         ; repeated = false
         })
       |> List.append
-           (Option.map repeated ~f:(fun { name; doc } ->
+           (Option.map repeated ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
               { Print.Entry.names = Print.Names.empty
-              ; value = Some name
+              ; value = Some value
               ; doc
               ; repeated = true
               })
@@ -239,42 +216,35 @@ module Positional_args = struct
     { Print.Section.section_heading = "Arguments:"; entries }
   ;;
 
-  let pp_usage_args ppf t =
-    List.iter t.fixed ~f:(fun { name; _ } ->
-      Format.pp_print_string ppf " ";
-      Value.pp ppf name);
-    Option.iter t.repeated ~f:(fun { name; _ } ->
-      Format.pp_print_string ppf " ";
-      Value.pp ppf name;
-      pp_print_elipsis ppf ())
-  ;;
-
   let pp style ppf t = Print.Section.pp style ppf (to_print_section t)
 end
 
 module Named_args = struct
-  type name =
-    { names : Name.t Nonempty_list.t
-    ; value : Value.t option
-    ; repeated : bool
-    }
-
-  type nonrec entry = name entry
-  type t = entry list
+  include Command_doc_spec.Named_args
 
   let to_print_section t =
     { Print.Section.section_heading = "Options:"
     ; entries =
-        List.map t ~f:(fun { name = { names; value; repeated }; doc } ->
-          let names = Nonempty_list.to_list names in
-          let short_names =
-            List.filter names ~f:Name.is_short |> List.map ~f:Name.to_string_with_dashes
-          in
-          let long_names =
-            List.filter names ~f:Name.is_long |> List.map ~f:Name.to_string_with_dashes
-          in
-          let names = { Print.Names.left = short_names; right = long_names } in
-          { Print.Entry.names; value; doc; repeated })
+        List.map
+          t
+          ~f:
+            (fun
+              { Command_doc_spec.Named_arg.names
+              ; value
+              ; repeated
+              ; doc
+              ; default_string = _
+              }
+            ->
+            let names = Nonempty_list.to_list names in
+            let short_names =
+              List.filter names ~f:Name.is_short |> List.map ~f:Name.to_string_with_dashes
+            in
+            let long_names =
+              List.filter names ~f:Name.is_long |> List.map ~f:Name.to_string_with_dashes
+            in
+            let names = { Print.Names.left = short_names; right = long_names } in
+            { Print.Entry.names; value; doc; repeated })
     }
   ;;
 
@@ -282,14 +252,12 @@ module Named_args = struct
 end
 
 module Subcommands = struct
-  type name = Name.t
-  type nonrec entry = name entry
-  type t = entry list
+  include Command_doc_spec.Subcommands
 
   let to_print_section t =
     { Print.Section.section_heading = "Commands:"
     ; entries =
-        List.map t ~f:(fun { name; doc } ->
+        List.map t ~f:(fun { Command_doc_spec.Subcommand.name; doc; _ } ->
           { Print.Entry.names = Print.Names.of_right [ Name.to_string name ]
           ; value = None
           ; doc
@@ -301,63 +269,33 @@ module Subcommands = struct
   let pp style ppf t = Print.Section.pp style ppf (to_print_section t)
 end
 
-module Arg_sections = struct
-  type t =
-    { positional_args : Positional_args.t
-    ; named_args : Named_args.t
-    }
-
-  let pp_usage_args ppf t =
-    if not (List.is_empty t.named_args) then Format.pp_print_string ppf " [OPTIONS]";
-    Positional_args.pp_usage_args ppf t.positional_args
-  ;;
-end
-
-module Sections = struct
-  type t =
-    { arg_sections : Arg_sections.t
-    ; subcommands : Subcommands.t
-    }
-
-  let pp style ppf t =
-    Positional_args.pp style ppf t.arg_sections.positional_args;
-    Named_args.pp style ppf t.arg_sections.named_args;
-    Subcommands.pp style ppf t.subcommands
-  ;;
-end
-
-type t =
-  { program_name : string
-  ; subcommand : string list
-  ; doc : string option
-  ; sections : Sections.t
-  }
-
-let pp_command_base ppf t =
-  Format.fprintf ppf "%s" t.program_name;
-  List.iter t.subcommand ~f:(Format.fprintf ppf " %s")
+let pp_command_base ppf (spec : Command_doc_spec.t) =
+  Format.fprintf ppf "%s" spec.program_name;
+  List.iter spec.subcommand ~f:(Format.fprintf ppf " %s")
 ;;
 
-let pp_usage (style : Style.t) ppf t =
+let pp_usage (style : Style.t) ppf (spec : Command_doc_spec.t) =
   Ansi_style.pp_with_style style.section_heading ppf ~f:(fun ppf ->
     Format.pp_print_string ppf "Usage: ");
   Ansi_style.pp_with_style style.usage ppf ~f:(fun ppf ->
-    if not (List.is_empty t.sections.subcommands)
+    if not (List.is_empty spec.subcommands)
     then (
-      pp_command_base ppf t;
+      pp_command_base ppf spec;
       Format.pp_print_string ppf " [COMMAND]";
       Format.pp_print_newline ppf ();
       Format.pp_print_string ppf "       ");
-    pp_command_base ppf t;
-    Arg_sections.pp_usage_args ppf t.sections.arg_sections)
+    pp_command_base ppf spec;
+    Command_doc_spec.Args.pp_usage_args ~format_positional_args:Fun.id ppf spec.args)
 ;;
 
-let pp (style : Style.t) ppf t =
-  Option.iter t.doc ~f:(fun doc ->
+let pp (style : Style.t) ppf (spec : Command_doc_spec.t) =
+  Option.iter spec.doc ~f:(fun spec ->
     Ansi_style.pp_with_style style.program_doc ppf ~f:(fun ppf ->
-      Format.pp_print_string ppf doc);
+      Format.pp_print_string ppf spec);
     pp_print_newlines ppf 2);
-  pp_usage style ppf t;
+  pp_usage style ppf spec;
   pp_print_newlines ppf 1;
-  Sections.pp style ppf t.sections
+  Positional_args.pp style ppf spec.args.positional;
+  Named_args.pp style ppf spec.args.named;
+  Subcommands.pp style ppf spec.subcommands
 ;;
