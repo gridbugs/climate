@@ -1,9 +1,11 @@
-module Prose : sig
-  type markup =
-    [ `Paragraph of string
-    | `Preformatted of string
+module Markup : sig
+  type t =
+    [ `P of string
+    | `Pre of string
     ]
+end
 
+module Prose : sig
   (** The parts of a manpage that are hand-written and not generated from the
       command line spec *)
   type t
@@ -11,11 +13,11 @@ module Prose : sig
   val empty : t
 
   val create
-    :  ?description:markup list
-    -> ?environment:markup list
-    -> ?files:markup list
-    -> ?examples:markup list
-    -> ?authors:markup list
+    :  ?description:Markup.t list
+    -> ?environment:Markup.t list
+    -> ?files:Markup.t list
+    -> ?examples:Markup.t list
+    -> ?authors:Markup.t list
     -> unit
     -> t
 end

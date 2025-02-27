@@ -38,8 +38,8 @@ module Manpage = struct
   include Manpage
 
   type markup =
-    [ `Paragraph of string
-    | `Preformatted of string
+    [ `P of string
+    | `Pre of string
     ]
 
   type prose = Manpage.Prose.t

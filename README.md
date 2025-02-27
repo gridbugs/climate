@@ -191,3 +191,10 @@ its parameter, such as in `make -dj 4`, which is equivalent to `make -d -j 4`.
 If the parameterized argument appears in a non-final position within the
 sequence then the remainder of the sequence is treated as its parameter, such as
 in `make -dj4` which is also equivalent to `make -d -j 4`.
+
+### Manpages
+
+To generate a manpage for a command, run the command with the hidden flag
+`--manpage`. This command will print the manpage in the troff format to stdout.
+To render the manpage during development, pipe the output to `man -l -`. E.g.
+`dune exec myprog.exe -- --manpage | man -l -`.
