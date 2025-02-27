@@ -2,3 +2,4 @@ _build
 _opam
 dune.lock
 dev-tools.locks
+dune-workspace
