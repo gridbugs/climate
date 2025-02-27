@@ -8,7 +8,7 @@ let run command args =
   | Usage -> ()
 ;;
 
-let unit_command ?desc () = singleton ?desc Arg_parser.unit
+let unit_command ?doc () = singleton ?doc Arg_parser.unit
 
 let%expect_test "empty spec" =
   run (unit_command ()) [ "--help" ];
@@ -56,9 +56,9 @@ let%expect_test "subcommands" =
 let%expect_test "descriptions" =
   let command =
     group
-      ~desc:"program description"
-      [ subcommand "foo" (unit_command ~desc:"description of subcommand foo" ())
-      ; subcommand "bar" (unit_command ~desc:"description of subcommand bar" ())
+      ~doc:"program description"
+      [ subcommand "foo" (unit_command ~doc:"description of subcommand foo" ())
+      ; subcommand "bar" (unit_command ~doc:"description of subcommand bar" ())
       ]
   in
   run command [];
@@ -108,14 +108,14 @@ let%expect_test "descriptions" =
 let%expect_test "arguments" =
   let parser =
     let open Arg_parser in
-    let+ _ = named_opt [ "foo"; "f" ] ~desc:"description of foo" file
+    let+ _ = named_opt [ "foo"; "f" ] ~doc:"description of foo" file
     and+ _ =
       named_opt
         [ "bar" ]
-        ~desc:"description of bar"
+        ~doc:"description of bar"
         (string_enum ~default_value_name:"ABC" [ "a"; "b"; "c" ])
     and+ _ = named_opt [ "c" ] int
-    and+ _ = pos_req 1 string ~value_name:"ARG2" ~desc:"The second argument"
+    and+ _ = pos_req 1 string ~value_name:"ARG2" ~doc:"The second argument"
     and+ _ = pos_req 0 (string_enum [ "x"; "y"; "z" ]) ~value_name:"XYZ" in
     ()
   in
@@ -140,7 +140,7 @@ let%expect_test "arguments" =
 let%expect_test "arguments and subcommands" =
   let log =
     singleton
-      ~desc:"List recent commits"
+      ~doc:"List recent commits"
       (let open Arg_parser in
        let+ _pretty =
          named_opt
@@ -151,7 +151,7 @@ let%expect_test "arguments and subcommands" =
   in
   let commit =
     singleton
-      ~desc:"Make a new commit"
+      ~doc:"Make a new commit"
       (let open Arg_parser in
        let+ _amend = flag [ "amend"; "a" ]
        and+ _message = named_opt [ "m"; "message" ] string in
@@ -159,7 +159,7 @@ let%expect_test "arguments and subcommands" =
   in
   let command =
     group
-      ~desc:"Fake version control software"
+      ~doc:"Fake version control software"
       [ subcommand "log" log; subcommand "commit" commit ]
   in
   run command [];

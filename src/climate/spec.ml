@@ -12,7 +12,7 @@ module Named = struct
       ; default_string :
           string option (* default value to display in documentation (if any) *)
       ; required : bool (* determines if argument is shown in usage string *)
-      ; desc : string option
+      ; doc : string option
       ; completion : untyped_completion_hint option
       ; hidden : bool
       ; repeated : bool
@@ -24,12 +24,12 @@ module Named = struct
       | `Yes_with_value_name _ -> true
     ;;
 
-    let flag names ~desc ~hidden ~repeated =
+    let flag names ~doc ~hidden ~repeated =
       { names
       ; has_param = `No
       ; default_string = None
       ; required = false
-      ; desc
+      ; doc
       ; completion = None
       ; hidden
       ; repeated
@@ -53,7 +53,7 @@ module Named = struct
           | `Yes_with_value_name name -> Some { Help.Value.name; required = true }
         in
         let name = { Help.Named_args.names = t.names; value; repeated = t.repeated } in
-        Some { Help.name; desc = t.desc })
+        Some { Help.name; doc = t.doc })
     ;;
   end
 
@@ -103,7 +103,7 @@ module Positional = struct
     { required : bool
     ; value_name : string
     ; completion : untyped_completion_hint option
-    ; desc : string option
+    ; doc : string option
     }
 
   type all_above_inclusive =
@@ -123,11 +123,11 @@ module Positional = struct
     Option.is_none all_above_inclusive && Int.Map.is_empty others_by_index
   ;;
 
-  let help_entry_of_single_arg { required; value_name; desc; _ }
+  let help_entry_of_single_arg { required; value_name; doc; _ }
     : Help.Positional_args.entry
     =
     let name = { Help.Value.name = value_name; required } in
-    { Help.name; desc }
+    { Help.name; doc }
   ;;
 
   let help_entries { all_above_inclusive; others_by_index } =
@@ -167,10 +167,10 @@ module Positional = struct
       { t with others_by_index }
   ;;
 
-  let add_index t index ~value_name ~required ~completion ~desc =
+  let add_index t index ~value_name ~required ~completion ~doc =
     let others_by_index =
       Int.Map.update t.others_by_index ~key:index ~f:(function
-        | None -> Some { value_name; required; completion; desc }
+        | None -> Some { value_name; required; completion; doc }
         | Some x ->
           check_value_names index x.value_name value_name;
           if x.required <> required
@@ -180,7 +180,7 @@ module Positional = struct
     trim_map { t with others_by_index }
   ;;
 
-  let add_all_above_inclusive t index ~value_name ~completion ~desc =
+  let add_all_above_inclusive t index ~value_name ~completion ~doc =
     match t.all_above_inclusive with
     | Some x when x.index < index ->
       check_value_names index x.arg.value_name value_name;
@@ -189,13 +189,13 @@ module Positional = struct
       trim_map
         { t with
           all_above_inclusive =
-            Some { index; arg = { required = false; value_name; completion; desc } }
+            Some { index; arg = { required = false; value_name; completion; doc } }
         }
   ;;
 
-  let add_all_below_exclusive t index ~value_name ~required ~completion ~desc =
+  let add_all_below_exclusive t index ~value_name ~required ~completion ~doc =
     Seq.init index Fun.id
-    |> Seq.fold_left (add_index ~value_name ~required ~completion ~desc) t
+    |> Seq.fold_left (add_index ~value_name ~required ~completion ~doc) t
     |> trim_map
   ;;
 
@@ -295,8 +295,8 @@ let create_named info =
   { named; positional = Positional.empty }
 ;;
 
-let create_flag names ~desc ~hidden ~repeated =
-  create_named (Named.Info.flag names ~desc ~hidden ~repeated)
+let create_flag names ~doc ~hidden ~repeated =
+  create_named (Named.Info.flag names ~doc ~hidden ~repeated)
 ;;
 
 let help_sections { named; positional } =

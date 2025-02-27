@@ -2,10 +2,10 @@ open Import
 
 module Style : sig
   type t =
-    { program_desc : Ansi_style.t
+    { program_doc : Ansi_style.t
     ; usage : Ansi_style.t
     ; arg_name : Ansi_style.t
-    ; arg_desc : Ansi_style.t
+    ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
     }
 
@@ -18,7 +18,7 @@ end
 
 type 'name entry =
   { name : 'name
-  ; desc : string option
+  ; doc : string option
   }
 
 module Value : sig
@@ -72,7 +72,7 @@ end
 type t =
   { program_name : string
   ; subcommand : string list
-  ; desc : string option
+  ; doc : string option
   ; sections : Sections.t
   }
 

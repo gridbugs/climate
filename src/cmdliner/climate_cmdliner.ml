@@ -97,7 +97,7 @@ module Cmd = struct
   let name (t : _ t) = t.name
 
   let v info term =
-    let command = Climate.Command.singleton ?desc:info.doc term in
+    let command = Climate.Command.singleton ?doc:info.doc term in
     { name = info.name; command }
   ;;
 
@@ -105,7 +105,7 @@ module Cmd = struct
     let command =
       Climate.Command.group
         ?default_arg_parser:default
-        ?desc:info.doc
+        ?doc:info.doc
         (List.map cmds ~f:(fun { name; command } ->
            Climate.Command.subcommand name command))
     in
@@ -147,7 +147,7 @@ module Arg = struct
   let conv_printer = snd
 
   type info =
-    { desc : string option
+    { doc : string option
     ; value_name : string option
     ; names : string list
     }
@@ -163,9 +163,7 @@ module Arg = struct
     | None -> failwith (Printf.sprintf "missing required argument")
   ;;
 
-  let info ?docs:_ignored ?docv ?doc ?env:_ names =
-    { desc = doc; value_name = docv; names }
-  ;;
+  let info ?docs:_ignored ?docv ?doc ?env:_ names = { doc; value_name = docv; names }
 
   let conv_to_climate (parse, print) =
     let parse string =
@@ -188,16 +186,16 @@ module Arg = struct
     parse, conv.print
   ;;
 
-  let opt conv default { desc; value_name; names } =
+  let opt conv default { doc; value_name; names } =
     Climate.Arg_parser.named_with_default
-      ?desc
+      ?doc
       ?value_name
       names
       (conv_to_climate conv)
       ~default
   ;;
 
-  let flag { desc; names; _ } = Climate.Arg_parser.flag ?desc names
+  let flag { doc; names; _ } = Climate.Arg_parser.flag ?doc names
 
   let some ?(none = "") (conv : 'a conv) : 'a option conv =
     let conv = conv_to_climate conv in
@@ -251,9 +249,9 @@ module Arg = struct
     Climate.Arg_parser.list ?sep (conv_to_climate conv) |> conv_of_climate
   ;;
 
-  let opt_all conv default { desc; names; value_name } =
+  let opt_all conv default { doc; names; value_name } =
     let open Climate.Arg_parser in
-    let+ values = named_multi ?desc ?value_name names (conv_to_climate conv) in
+    let+ values = named_multi ?doc ?value_name names (conv_to_climate conv) in
     match values with
     | [] -> default
     | xs -> xs

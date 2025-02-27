@@ -28,10 +28,10 @@ module Help_style : sig
   val ansi_style_plain : ansi_style
 
   type t =
-    { program_desc : ansi_style
+    { program_doc : ansi_style
     ; usage : ansi_style
     ; arg_name : ansi_style
-    ; arg_desc : ansi_style
+    ; arg_doc : ansi_style
     ; section_heading : ansi_style
     }
 
@@ -188,7 +188,7 @@ module Arg_parser : sig
 
   (** A named argument that may appear multiple times on the command line. *)
   val named_multi
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?hidden:bool
     -> ?completion:'a Completion.t
@@ -198,7 +198,7 @@ module Arg_parser : sig
 
   (** A named argument that may appear at most once on the command line. *)
   val named_opt
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?hidden:bool
     -> ?completion:'a Completion.t
@@ -209,7 +209,7 @@ module Arg_parser : sig
   (** A named argument that may appear at most once on the command line. If the
       argument is not passed then a given default value will be used instead. *)
   val named_with_default
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?hidden:bool
     -> ?completion:'a Completion.t
@@ -220,7 +220,7 @@ module Arg_parser : sig
 
   (** A named argument that must appear exactly once on the command line. *)
   val named_req
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?hidden:bool
     -> ?completion:'a Completion.t
@@ -230,15 +230,15 @@ module Arg_parser : sig
 
   (** A flag that may appear multiple times on the command line.
       Evaluates to the number of times the flag appeared. *)
-  val flag_count : ?desc:string -> ?hidden:bool -> string list -> int t
+  val flag_count : ?doc:string -> ?hidden:bool -> string list -> int t
 
   (** A flag that may appear at most once on the command line. *)
-  val flag : ?desc:string -> string list -> bool t
+  val flag : ?doc:string -> string list -> bool t
 
   (** [pos_opt i conv] declares an optional anonymous positional
       argument at position [i] (starting at 0). *)
   val pos_opt
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
@@ -248,7 +248,7 @@ module Arg_parser : sig
   (** [pos_with_default i conv] declares an optional anonymous positional
       argument with a default value at position [i] (starting at 0). *)
   val pos_with_default
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
@@ -259,7 +259,7 @@ module Arg_parser : sig
   (** [pos_req i conv] declares a required anonymous positional
       argument at position [i] (starting at 0). *)
   val pos_req
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
@@ -268,7 +268,7 @@ module Arg_parser : sig
 
   (** Parses all positional arguments. *)
   val pos_all
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> 'a conv
@@ -277,7 +277,7 @@ module Arg_parser : sig
   (** [pos_left i conv] parses all positional arguments at positions less than
       i. *)
   val pos_left
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
@@ -287,7 +287,7 @@ module Arg_parser : sig
   (** [pos_right i conv] parses all positional arguments at positions greater
       than i. *)
   val pos_right
-    :  ?desc:string
+    :  ?doc:string
     -> ?value_name:string
     -> ?completion:'a Completion.t
     -> int
@@ -346,7 +346,7 @@ module Command : sig
   type 'a t
 
   (** Declare a single command. *)
-  val singleton : ?desc:string -> ?prose:Manpage.prose -> 'a Arg_parser.t -> 'a t
+  val singleton : ?doc:string -> ?prose:Manpage.prose -> 'a Arg_parser.t -> 'a t
 
   type 'a subcommand
 
@@ -359,7 +359,7 @@ module Command : sig
       passed with that argument. *)
   val group
     :  ?default_arg_parser:'a Arg_parser.t
-    -> ?desc:string
+    -> ?doc:string
     -> ?prose:Manpage.prose
     -> 'a subcommand list
     -> 'a t
@@ -439,7 +439,7 @@ module Command : sig
     -> ?program_name:Program_name.t
     -> ?help_style:Help_style.t
     -> ?version:string
-    -> ?desc:string
+    -> ?doc:string
     -> 'a Arg_parser.t
     -> 'a
 end
