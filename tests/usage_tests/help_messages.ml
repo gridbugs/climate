@@ -14,7 +14,7 @@ let%expect_test "empty spec" =
   run (unit_command ()) [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS]
+    Usage: foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -29,7 +29,7 @@ let%expect_test "subcommands" =
   [%expect
     {|
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -42,7 +42,7 @@ let%expect_test "subcommands" =
   [%expect
     {|
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -67,7 +67,7 @@ let%expect_test "descriptions" =
     program description
 
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -82,7 +82,7 @@ let%expect_test "descriptions" =
     program description
 
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -98,7 +98,7 @@ let%expect_test "descriptions" =
     {|
     description of subcommand foo
 
-    Usage: foo.exe foo [OPTIONS]
+    Usage: foo.exe foo [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -123,7 +123,7 @@ let%expect_test "arguments" =
   run command [ "--help" ];
   [%expect
     {|
-    Usage: foo.exe [OPTIONS] <XYZ> <ARG2>
+    Usage: foo.exe [OPTION]… <XYZ> <ARG2>
 
     Arguments:
       <XYZ>
@@ -168,7 +168,7 @@ let%expect_test "arguments and subcommands" =
     Fake version control software
 
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -183,7 +183,7 @@ let%expect_test "arguments and subcommands" =
     Fake version control software
 
     Usage: foo.exe [COMMAND]
-           foo.exe [OPTIONS]
+           foo.exe [OPTION]…
 
     Options:
       -h, --help  Show this help message.
@@ -197,7 +197,7 @@ let%expect_test "arguments and subcommands" =
     {|
     List recent commits
 
-    Usage: foo.exe log [OPTIONS]
+    Usage: foo.exe log [OPTION]…
 
     Options:
       -p, --pretty <VALUE>
@@ -208,7 +208,7 @@ let%expect_test "arguments and subcommands" =
     {|
     Make a new commit
 
-    Usage: foo.exe commit [OPTIONS]
+    Usage: foo.exe commit [OPTION]…
 
     Options:
       -a, --amend
