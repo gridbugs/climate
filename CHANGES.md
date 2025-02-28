@@ -2,7 +2,7 @@
 
 ## 0.5.0
 
-## Added
+### Added
 
 - Basic manpage generation (#13)
 - Command aliases (#14)
