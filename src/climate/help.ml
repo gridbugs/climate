@@ -257,8 +257,10 @@ module Subcommands = struct
   let to_print_section t =
     { Print.Section.section_heading = "Commands:"
     ; entries =
-        List.map t ~f:(fun { Command_doc_spec.Subcommand.name; doc; _ } ->
-          { Print.Entry.names = Print.Names.of_right [ Name.to_string name ]
+        List.map t ~f:(fun { Command_doc_spec.Subcommand.name; doc; aliases; _ } ->
+          { Print.Entry.names =
+              Print.Names.of_right
+                (Name.to_string name :: List.map aliases ~f:Name.to_string)
           ; value = None
           ; doc
           ; repeated = false

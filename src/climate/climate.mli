@@ -337,6 +337,9 @@ end
 (** Raised if the command being evaluated printed a usage message *)
 exception Usage
 
+(** Raised if the command being evaluated printed a manpage *)
+exception Manpage
+
 module Program_name : sig
   type t =
     | Argv0
@@ -351,7 +354,7 @@ module Command : sig
 
   type 'a subcommand
 
-  val subcommand : ?hidden:bool -> string -> 'a t -> 'a subcommand
+  val subcommand : ?hidden:bool -> ?aliases:string list -> string -> 'a t -> 'a subcommand
 
   (** [group children] returns a command with a hierarchy of subcommands, the
       leaves of which will be either singletons or empty groups (groups with an

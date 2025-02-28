@@ -48,6 +48,7 @@ module Spec_error : sig
         ; value_name2 : string
         }
     | Conflicting_requiredness_for_positional_argument of int
+    | Duplicate_command_names of string list
 
   val to_string : t -> string
 end

@@ -182,6 +182,15 @@ module String = struct
 
   module Set = Set.Make (String)
   module Map = Map.Make (String)
+
+  let find_duplicates ts =
+    List.fold_left ts ~init:(Set.empty, []) ~f:(fun (set, duplicate_names) name ->
+      if Set.mem name set
+      then set, name :: duplicate_names
+      else Set.add name set, duplicate_names)
+    |> snd
+    |> List.rev
+  ;;
 end
 
 module Int = struct

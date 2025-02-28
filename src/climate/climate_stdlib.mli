@@ -86,6 +86,7 @@ module String : sig
   val lsplit2 : t -> on:char -> (t * t) option
   val is_empty : t -> bool
   val drop_prefix : t -> prefix:t -> t option
+  val find_duplicates : t list -> t list
 
   module Set : Set.S with type elt = t
   module Map : Map.S with type key = t
