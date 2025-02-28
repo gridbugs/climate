@@ -77,13 +77,25 @@ let commands (subcommands : Command_doc_spec.Subcommands.t) =
   ".SH COMMANDS\n"
   :: List.concat_map
        subcommands
-       ~f:(fun { Command_doc_spec.Subcommand.name; doc; args } ->
+       ~f:(fun { Command_doc_spec.Subcommand.name; aliases; doc; args } ->
          Command_doc_spec.Args.pp_usage_args
            ~format_positional_args:(fun name -> sprintf "\\fI%s\\fR" name)
            Format.str_formatter
            args;
          let usage_args = Format.flush_str_formatter () in
-         [ Some (sprintf ".TP\n\\fB%s\\fR%s" (Name.to_string name) usage_args); doc ]
+         let aliases =
+           match aliases with
+           | [] -> None
+           | aliases ->
+             Some
+               (sprintf
+                  "\nAliases: %s"
+                  (List.map ~f:Name.to_string aliases |> String.concat ~sep:", "))
+         in
+         [ Some (sprintf ".TP\n\\fB%s\\fR%s" (Name.to_string name) usage_args)
+         ; doc
+         ; aliases
+         ]
          |> List.filter_opt)
   |> String.concat ~sep:"\n"
 ;;

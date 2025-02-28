@@ -76,7 +76,7 @@ let () =
     [ subcommand "config" (singleton Arg_parser.unit ~doc:"Configure the tool.")
     ; subcommand "checkout" (singleton checkout ~doc:"Check out a revision.")
     ; subcommand "commit" (singleton commit ~doc:"Commit your changes.")
-    ; subcommand "log" (singleton log ~doc:"List recent commits.")
+    ; subcommand "log" ~aliases:[ "l" ] (singleton log ~doc:"List recent commits.")
     ; subcommand
         "bisect"
         (group

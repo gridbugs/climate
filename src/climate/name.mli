@@ -1,5 +1,7 @@
 open! Import
 
+(** A valid name for a command or argument. A string which cannot be empty,
+    cannot begin with a '-' character, and can't include a '=' character. *)
 type t
 
 module Invalid : sig

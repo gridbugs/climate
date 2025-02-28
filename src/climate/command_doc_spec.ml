@@ -69,6 +69,7 @@ end
 module Subcommand = struct
   type t =
     { name : Name.t
+    ; aliases : Name.t list
     ; doc : string option
     ; args : Args.t
     }

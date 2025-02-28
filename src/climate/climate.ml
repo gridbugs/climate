@@ -68,13 +68,14 @@ exception Manpage
 module Subcommand = struct
   type t =
     { name : Name.t
+    ; aliases : Name.t list
     ; doc : string option
     ; arg_spec : Spec.t
     }
 
-  let command_doc_spec { name; doc; arg_spec } =
+  let command_doc_spec { name; aliases; doc; arg_spec } =
     let args = Spec.command_doc_spec arg_spec in
-    { Command_doc_spec.Subcommand.name; doc; args }
+    { Command_doc_spec.Subcommand.name; aliases; doc; args }
   ;;
 end
 
@@ -264,17 +265,7 @@ module Arg_parser = struct
   let enum ?(default_value_name = "VALUE") ?(eq = ( = )) l =
     let all_names = List.map l ~f:fst in
     let all_values = List.map l ~f:snd in
-    let duplicate_names =
-      List.fold_left
-        all_names
-        ~init:(String.Set.empty, [])
-        ~f:(fun (set, duplicate_names) name ->
-          if String.Set.mem name set
-          then set, name :: duplicate_names
-          else String.Set.add name set, duplicate_names)
-      |> snd
-      |> List.rev
-    in
+    let duplicate_names = String.find_duplicates all_names in
     if List.length duplicate_names > 0
     then Error.spec_error (Duplicate_enum_names duplicate_names);
     let parse s =
@@ -894,8 +885,14 @@ module Command = struct
   module Subcommand_info = struct
     type t =
       { name : Name.t
+      ; aliases : Name.t list
       ; hidden : bool
       }
+
+    let matches { name; aliases; _ } s =
+      let string_matches_name name = String.equal s (Name.to_string name) in
+      string_matches_name name || List.exists aliases ~f:string_matches_name
+    ;;
   end
 
   type 'a t =
@@ -934,8 +931,10 @@ module Command = struct
       }
   ;;
 
-  let subcommand ?(hidden = false) name_string command =
-    { info = { Subcommand_info.name = name_of_string_exn name_string; hidden }; command }
+  let subcommand ?(hidden = false) ?(aliases = []) name_string command =
+    let name = name_of_string_exn name_string in
+    let aliases = List.map aliases ~f:name_of_string_exn in
+    { info = { Subcommand_info.name; hidden; aliases }; command }
   ;;
 
   let group ?default_arg_parser ?doc ?prose children =
@@ -946,6 +945,7 @@ module Command = struct
         else
           Some
             { Subcommand.name = info.name
+            ; aliases = info.aliases
             ; doc = command_doc command
             ; arg_spec = command_arg_spec command
             })
@@ -957,6 +957,16 @@ module Command = struct
     in
     let default_arg_parser =
       Arg_parser.finalize default_arg_parser ~doc ~child_subcommands ~prose
+    in
+    let () =
+      match
+        List.concat_map children ~f:(fun { info; _ } ->
+          List.map ~f:Name.to_string (info.name :: info.aliases))
+        |> String.find_duplicates
+      with
+      | [] -> ()
+      | child_names ->
+        Error.spec_error (Error.Spec_error.Duplicate_command_names child_names)
     in
     Group { children; default_arg_parser; doc }
   ;;
@@ -976,11 +986,12 @@ module Command = struct
         { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
     | Group { children; default_arg_parser; doc = _ }, x :: xs ->
       let subcommand =
-        List.find_map children ~f:(fun { info = { name; _ }; command } ->
-          if String.equal (Name.to_string name) x then Some command else None)
+        List.find_map children ~f:(fun { info; command } ->
+          if Subcommand_info.matches info x then Some (command, info.name) else None)
       in
       (match subcommand with
-       | Some subcommand -> traverse subcommand xs (x :: subcommand_acc)
+       | Some (subcommand, name) ->
+         traverse subcommand xs (Name.to_string name :: subcommand_acc)
        | None ->
          Ok
            { operation = `Arg_parser default_arg_parser

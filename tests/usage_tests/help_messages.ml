@@ -5,7 +5,7 @@ let run command args =
   try
     eval ~program_name:(Literal "foo.exe") ~help_style:Help_style.plain command args
   with
-  | Usage -> ()
+  | Usage | Manpage -> ()
 ;;
 
 let unit_command ?doc () = singleton ?doc Arg_parser.unit
@@ -57,7 +57,10 @@ let%expect_test "descriptions" =
   let command =
     group
       ~doc:"program description"
-      [ subcommand "foo" (unit_command ~doc:"description of subcommand foo" ())
+      [ subcommand
+          "foo"
+          ~aliases:[ "f" ]
+          (unit_command ~doc:"description of subcommand foo" ())
       ; subcommand "bar" (unit_command ~doc:"description of subcommand bar" ())
       ]
   in
@@ -73,8 +76,8 @@ let%expect_test "descriptions" =
       -h, --help  Show this help message.
 
     Commands:
-      foo  description of subcommand foo
-      bar  description of subcommand bar
+      foo, f  description of subcommand foo
+      bar     description of subcommand bar
     |}];
   run command [ "--help" ];
   [%expect
@@ -88,8 +91,8 @@ let%expect_test "descriptions" =
       -h, --help  Show this help message.
 
     Commands:
-      foo  description of subcommand foo
-      bar  description of subcommand bar
+      foo, f  description of subcommand foo
+      bar     description of subcommand bar
     |}];
   run command [ "foo" ];
   [%expect {||}];
@@ -102,6 +105,30 @@ let%expect_test "descriptions" =
 
     Options:
       -h, --help  Show this help message.
+  |}];
+  run command [ "--manpage" ];
+  [%expect {|
+    .TH "FOO.EXE" 1 "" "Foo.exe " "Foo.exe Manual"
+
+
+    .SH NAME
+    foo.exe - program description
+
+    .SH COMMANDS
+
+    .TP
+    \fBfoo\fR [\fIOPTION\fR]…
+    description of subcommand foo
+
+    Aliases: f
+    .TP
+    \fBbar\fR [\fIOPTION\fR]…
+    description of subcommand bar
+    .SH OPTIONS
+
+    .TP
+    --help, -h
+    Show this help message.
     |}]
 ;;
 

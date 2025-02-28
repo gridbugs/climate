@@ -119,6 +119,7 @@ module Spec_error = struct
         ; value_name2 : string
         }
     | Conflicting_requiredness_for_positional_argument of int
+    | Duplicate_command_names of string list
 
   let to_string = function
     | Empty_name_list -> "Name list is empty"
@@ -174,6 +175,8 @@ module Spec_error = struct
         "Multiple positional arguments registered at the same index (%d) with different \
          requiredness"
         index
+    | Duplicate_command_names names ->
+      sprintf "Duplicate command names: %s" (String.concat ~sep:", " names)
   ;;
 end
 
