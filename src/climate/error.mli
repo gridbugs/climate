@@ -26,8 +26,6 @@ module Parse_error : sig
         ; invalid_char : char
         }
 
-  exception E of t
-
   val to_string : t -> string
   val exit_code : int
 end

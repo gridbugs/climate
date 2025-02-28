@@ -50,7 +50,7 @@ module Manpage : sig
 
   (** The parts of a manpage that are hand-written and not generated from the
       command line spec *)
-  type prose
+  type prose = Manpage.Prose.t
 
   val prose
     :  ?description:markup list
@@ -161,6 +161,7 @@ module Arg_parser : sig
   val list : ?sep:char -> 'a conv -> 'a list conv
 
   val map : 'a t -> f:('a -> 'b) -> 'b t
+  val map' : 'a t -> f:('a -> ('b, Non_ret.t) result) -> 'b t
   val both : 'a t -> 'b t -> ('a * 'b) t
   val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
@@ -334,12 +335,6 @@ module Eval_config : sig
   val default : t
 end
 
-(** Raised if the command being evaluated printed a usage message *)
-exception Usage
-
-(** Raised if the command being evaluated printed a manpage *)
-exception Manpage
-
 module Program_name : sig
   type t =
     | Argv0
@@ -448,15 +443,17 @@ module Command : sig
     -> 'a
 end
 
-module Parse_error : sig
-  (** Errors encountered while interpreting command-line arguments. This
-      indicates that the user of a CLI program made with this library has
-      passed invalid command-line arguments to the program. *)
-  type t
+module For_test : sig
+  module Climate_stdlib : module type of Climate_stdlib
+  module Non_ret : module type of Non_ret
+  module Parse_error : module type of Error.Parse_error
 
-  exception E of t
+  val eval_result
+    :  program_name:string
+    -> 'a Command.t
+    -> string list
+    -> ('a, Non_ret.t) result
 
-  val to_string : t -> string
+  val print_help_spec : Command_doc_spec.t -> unit
+  val print_manpage : Command_doc_spec.t -> Manpage.prose -> unit
 end
-
-module For_test : module type of For_test

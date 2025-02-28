@@ -2,10 +2,11 @@ open Climate
 open Command
 
 let run command args =
-  try
-    eval ~program_name:(Literal "foo.exe") ~help_style:Help_style.plain command args
-  with
-  | Usage | Manpage -> ()
+  match For_test.eval_result ~program_name:"foo.exe" command args with
+  | Ok () -> ()
+  | Error (For_test.Non_ret.Help spec) -> For_test.print_help_spec spec
+  | Error (For_test.Non_ret.Manpage { spec; prose }) -> For_test.print_manpage spec prose
+  | _ -> failwith "unexpected parser output"
 ;;
 
 let unit_command ?doc () = singleton ?doc Arg_parser.unit
@@ -107,7 +108,8 @@ let%expect_test "descriptions" =
       -h, --help  Show this help message.
   |}];
   run command [ "--manpage" ];
-  [%expect {|
+  [%expect
+    {|
     .TH "FOO.EXE" 1 "" "Foo.exe " "Foo.exe Manual"
 
 

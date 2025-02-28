@@ -32,8 +32,6 @@ module Parse_error = struct
         ; invalid_char : char
         }
 
-  exception E of t
-
   let to_string = function
     | Arg_lacks_param name ->
       sprintf "Named argument %S lacks parameter." (Name.to_string_with_dashes name)
