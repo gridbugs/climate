@@ -1,0 +1,13 @@
+(lang dune 3.0)
+
+(env
+ (dev
+  (flags :standard -warn-error -26-27-32-33-34-37-39-23-38)))
+
+(repository
+ (name relocatable)
+ (url "git+https://github.com/dra27/opam-repository.git#relocatable"))
+
+(lock_dir
+ (path "dune.lock")
+ (repositories upstream relocatable))

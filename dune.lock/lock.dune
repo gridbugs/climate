@@ -1,0 +1,30 @@
+(lang package 0.1)
+
+(dependency_hash dd6f641ec379f2a1c8c6974658f1bd5f)
+
+(ocaml ocaml-base-compiler)
+
+(repositories
+ (complete true)
+ (used
+  ((source
+    https://github.com/ocaml/opam-repository.git#5ab9f3c9e8c50d4858e5b871d7544019a20f89e2))
+  ((source
+    https://github.com/dra27/opam-repository.git#438f65b289ab16fa2995ea07f80369141a34d1ea))))
+
+(expanded_solver_variable_bindings
+ (variable_values
+  (with-doc false)
+  (with-dev-setup false)
+  (post true)
+  (os-distribution nixos)
+  (os linux)
+  (opam-version 2.2.0~alpha-vendored)
+  (arch x86_64))
+ (unset_variables
+  with-test
+  sys-ocaml-version
+  sys-ocaml-libc
+  enable-ocaml-beta-repository
+  dev
+  build))
