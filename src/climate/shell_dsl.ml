@@ -65,6 +65,7 @@ and cond =
   | Test_raw_cond of string
   | Test_raw_cond_of_string_with_global_name of string_with_global_name
   | Test_raw_cond_of_string_with_local_variable of (Local_variable.t * (string -> string))
+  | Raw_cond_of_string_with_local_variable of (Local_variable.t * (string -> string))
 
 and conditional_block =
   { cond : cond
@@ -103,6 +104,10 @@ and stmt =
       (Local_variable.t * Local_variable.t * (string -> string -> string))
   | Raw_with_local_variable_and_global_name of
       (Local_variable.t * global_name * (string -> string -> string))
+  | With_stdin_from_command of
+      { stmt : stmt
+      ; command_string : string
+      }
 
 module Global_name = struct
   type t = global_name
@@ -204,6 +209,10 @@ module Cond = struct
     Test_raw_cond_of_string_with_local_variable (v, f)
   ;;
 
+  let raw_of_string_with_local_variable ~f v =
+    Raw_cond_of_string_with_local_variable (v, f)
+  ;;
+
   let map_global_name_suffix t ~f =
     match t with
     | Call { function_; args } ->
@@ -228,6 +237,11 @@ module Cond = struct
         (b.string_of_name b.global_name.suffix)
     | ( Test_raw_cond_of_string_with_local_variable (var_a, f_a)
       , Test_raw_cond_of_string_with_local_variable (var_b, f_b) ) ->
+      String.equal
+        (f_a var_a.Local_variable.full_name)
+        (f_b var_b.Local_variable.full_name)
+    | ( Raw_cond_of_string_with_local_variable (var_a, f_a)
+      , Raw_cond_of_string_with_local_variable (var_b, f_b) ) ->
       String.equal
         (f_a var_a.Local_variable.full_name)
         (f_b var_b.Local_variable.full_name)
@@ -291,6 +305,10 @@ module Stmt = struct
     Cond (Cond.test_raw_of_string_with_global_name ~f global_named_value)
   ;;
 
+  let raw_cond_of_string_with_local_variable ~f global_named_value =
+    Cond (Cond.raw_of_string_with_local_variable ~f global_named_value)
+  ;;
+
   let if_ ?elifs ?else_ cond body =
     let elifs =
       Option.map elifs ~f:(List.map ~f:(fun (cond, body) -> { cond; body }))
@@ -318,6 +336,10 @@ module Stmt = struct
     Raw_with_local_variable_and_global_name (local_variable, global_name, f)
   ;;
 
+  let with_stdin_from_command stmt ~command_string =
+    With_stdin_from_command { stmt; command_string }
+  ;;
+
   let comment s = Comment s
   let noop = Noop
 
@@ -328,8 +350,12 @@ module Stmt = struct
 
   let map_global_name_suffix_single_stmt t ~f =
     match t with
-    | Raw _ | Noop | Comment _ | Raw_with_local_variable _ | Raw_with_local_variable2 _ ->
-      t
+    | Raw _
+    | Noop
+    | Comment _
+    | Raw_with_local_variable _
+    | Raw_with_local_variable2 _
+    | With_stdin_from_command _ -> t
     | Raw_with_global_name { string_of_name; global_name } ->
       Raw_with_global_name
         { string_of_name; global_name = Global_name.with_suffix global_name ~f }
@@ -379,6 +405,9 @@ module Stmt = struct
       | Declare_local_variables _
       | Raw_with_local_variable _
       | Raw_with_local_variable2 _ -> t, acc
+      | With_stdin_from_command { stmt; command_string } ->
+        let stmt, acc = single stmt acc in
+        With_stdin_from_command { stmt; command_string }, acc
       | If { if_ = { cond; body }; elifs; else_ } ->
         let body, acc = loop body acc in
         let rev_elifs, acc =
@@ -513,6 +542,9 @@ module Bash = struct
     | Test_raw_cond_of_string_with_local_variable (v, f) ->
       let s = Local_variable.to_string ~style:ctx.local_variable_style v in
       sprintf "[ %s ]" (f s)
+    | Raw_cond_of_string_with_local_variable (v, f) ->
+      let s = Local_variable.to_string ~style:ctx.local_variable_style v in
+      f s
   ;;
 
   type line =
@@ -623,6 +655,14 @@ module Bash = struct
         let var0_string = Local_variable.to_string ~style:ctx.local_variable_style var0 in
         let var1_string = Local_variable.to_string ~style:ctx.local_variable_style var1 in
         [ { indent; text = f var0_string var1_string } ]
+      | With_stdin_from_command { stmt; command_string } ->
+        let rec ammend_last = function
+          | [] -> []
+          | [ { indent; text } ] ->
+            [ { indent; text = sprintf "%s < <(%s)" text command_string } ]
+          | x :: xs -> x :: ammend_last xs
+        in
+        ammend_last (loop indent stmt)
     in
     loop indent
   ;;

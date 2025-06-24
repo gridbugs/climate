@@ -150,12 +150,20 @@ module Add_reply = struct
 
   let files =
     let open Stmt in
+    let line = Local_variable.create "line" ~short_name:"l" in
     function_
       "add_reply_files"
       [ comment
           "Takes the word under the cursor (just the portion up to the cursor) and \
            completes with files in the current directory."
-      ; raw "COMPREPLY+=($(compgen -A file -- \"$1\"))"
+      ; while_
+          (Cond.raw_of_string_with_local_variable
+             ~f:(fun line -> sprintf "IFS= read -r %s" line)
+             line)
+          [ raw_with_local_variable line ~f:(fun line ->
+              sprintf "COMPREPLY+=( \"$%s\" )" line)
+          ]
+        |> with_stdin_from_command ~command_string:"compgen -A file -- \"$1\""
       ; comment
           "Tell the shell that completions will be filenames. This allows for ergonomic \
            improvements such as appending a slash to directories and omitting the space \
