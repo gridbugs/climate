@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Fix bug where completing files whose names contain spaces would separate the
+  suggestions on those spaces. (#16)
+
 ## 0.5.0
 
 ### Added

@@ -74,6 +74,8 @@ module Cond : sig
     :  f:(string -> string)
     -> Local_variable.t
     -> t
+
+  val raw_of_string_with_local_variable : f:(string -> string) -> Local_variable.t -> t
 end
 
 module Case_pattern : sig
@@ -94,6 +96,11 @@ module Stmt : sig
   val test_raw_cond_of_string_with_global_name
     :  f:(string -> string)
     -> Global_name.t
+    -> t
+
+  val raw_cond_of_string_with_local_variable
+    :  f:(string -> string)
+    -> Local_variable.t
     -> t
 
   val if_ : ?elifs:(Cond.t * t list) list -> ?else_:t list -> Cond.t -> t list -> t
@@ -128,6 +135,8 @@ module Stmt : sig
     -> Global_name.t
     -> f:(string -> string -> string)
     -> t
+
+  val with_stdin_from_command : t -> command_string:string -> t
 
   (** Call a given function on all blocks appearing within the statement. *)
   val transform_blocks_top_down : t list -> f:(t list -> t list) -> t list

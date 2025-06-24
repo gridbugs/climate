@@ -120,3 +120,18 @@ Test the behaviour of arguments with no hints.
   .git
   completion.sh
   fake_git.exe
+
+Test completion on files whose names contain spaces.
+  $ mkdir dir
+  $ touch "dir/a b c d" "dir/e f g h" "dir/a b c"
+
+  $ x "fake-git commit dir/a" \
+  >   "                     ^"
+  dir/a b c d
+  dir/a b c
+
+  $ x "fake-git commit dir/" \
+  >   "                    ^"
+  dir/a b c d
+  dir/a b c
+  dir/e f g h

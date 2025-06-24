@@ -60,7 +60,8 @@ let bisect op =
 (* A command with an argument that has no completino hints *)
 let commit =
   let open Arg_parser in
-  let+ _message = named_opt [ "message" ] string in
+  let+ _message = named_opt [ "message" ] string
+  and+ _files = pos_all file ~doc:"The files to commit" in
   ()
 ;;
 
