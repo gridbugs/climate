@@ -16,10 +16,10 @@ Make a fake .git directory with some branches.
 
   $ x "fake-git " \
   >   "         ^"
-  checkout
-  log
   bisect
+  checkout
   commit
+  log
 
   $ x "fake-git checkout " \
   >   "                  ^"
@@ -72,8 +72,8 @@ Make a fake .git directory with some branches.
   >   "                      ^"
   full
   fuller
-  short
   oneline
+  short
 
   $ x "fake-git log --pretty f" \
   >   "                       ^"
@@ -97,10 +97,10 @@ Make a fake .git directory with some branches.
 Test that positional arguments and subcommands are both listed.
   $ x "fake-git bisect " \
   >   "                ^"
-  start
-  reset
-  good
   bad
+  good
+  reset
+  start
 
   $ x "fake-git bisect -" \
   >   "                 ^"
@@ -127,11 +127,11 @@ Test completion on files whose names contain spaces.
 
   $ x "fake-git commit dir/a" \
   >   "                     ^"
-  dir/a b c d
   dir/a b c
+  dir/a b c d
 
   $ x "fake-git commit dir/" \
   >   "                    ^"
-  dir/a b c d
   dir/a b c
+  dir/a b c d
   dir/e f g h
