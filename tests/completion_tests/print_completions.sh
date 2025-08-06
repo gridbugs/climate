@@ -61,7 +61,7 @@ completion_test() {
     done
     COMPREPLY=()
     $completion_function "$first_word" "$curr_word" "$prev_word"
-    printf "%s\n" "${COMPREPLY[@]}"
+    printf "%s\n" "${COMPREPLY[@]}" | grep -v "^\.cram" | sort
 }
 
 main () {
