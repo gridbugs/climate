@@ -19,13 +19,13 @@ Make a fake .git directory with some branches.
   foo
 
   $ x "fake-git checkout foo " \
-  >   "                      ^" | sort
+  >   "                      ^"
   .git
   completion.sh
   fake_git.exe
 
   $ x "fake-git checkout foo a.txt " \
-  >   "                            ^" | sort
+  >   "                            ^"
   .git
   completion.sh
   fake_git.exe
@@ -36,7 +36,7 @@ Make a fake .git directory with some branches.
   foo
 
   $ x "fake-git checkout foo a.txt " \
-  >   "                      ^     " | sort
+  >   "                      ^     "
   .git
   completion.sh
   fake_git.exe
@@ -108,7 +108,7 @@ Test that positional arguments and subcommands are both listed.
 
 Test the behaviour of arguments with no hints.
   $ x "fake-git commit --message " \
-  >   "                          ^" | sort
+  >   "                          ^"
   .git
   completion.sh
   fake_git.exe
