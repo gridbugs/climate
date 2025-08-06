@@ -35,6 +35,7 @@ module Help_style : sig
     ; arg_name : ansi_style
     ; arg_doc : ansi_style
     ; section_heading : ansi_style
+    ; error : ansi_style
     }
 
   (** An opinionated default value with some colours and formatting *)

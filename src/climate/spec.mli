@@ -32,6 +32,7 @@ module Named : sig
   (** Spec for a set of named arguments *)
   type t
 
+  (** True iff this spec has no named arguments. *)
   val is_empty : t -> bool
 
   (** Returns the [Info.t] for an argument with a given name *)
@@ -51,6 +52,7 @@ module Positional : sig
       spec. *)
   val arg_count : t -> [ `Limited of int | `Unlimited ]
 
+  (** True iff this spec has no positional arguments. *)
   val is_empty : t -> bool
 
   (** Create a spec with a single positional argument at a given
@@ -92,6 +94,8 @@ type t =
   }
 
 val empty : t
+
+(** True iff this spec has no arguments. *)
 val is_empty : t -> bool
 
 (** [merge a b] returns a spec containing the union of arguments in

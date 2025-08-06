@@ -96,7 +96,10 @@ val pair : ?sep:char -> 'a conv -> 'b conv -> ('a * 'b) conv
 val list : ?sep:char -> 'a conv -> 'a list conv
 
 val map : 'a t -> f:('a -> 'b) -> 'b t
+
+(** Similar to [map] however [f] may return a [Non_ret.t]. *)
 val map' : 'a t -> f:('a -> ('b, Non_ret.t) result) -> 'b t
+
 val both : 'a t -> 'b t -> ('a * 'b) t
 val ( >>| ) : 'a t -> ('a -> 'b) -> 'b t
 val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
@@ -268,7 +271,8 @@ module Private : sig
     -> prose:Manpage.Prose.t option
     -> 'a t
 
-  val usage : doc:string option -> child_subcommands:Subcommand.t list -> _ t
+  (** A parser that just prints a usage message. *)
+  val usage : _ t
 
   (** Like [named_opt] but takes its arguments as [Name.t]s rather than
       as strings is it's intended for use within this library. *)

@@ -262,7 +262,9 @@ module Command = struct
     in
     let default_arg_parser =
       match default_arg_parser with
-      | None -> Arg_parser.Private.usage ~doc ~child_subcommands
+      | None ->
+        (* By default, use an arg parser that just prints a usage message. *)
+        Arg_parser.Private.usage
       | Some default_arg_parser -> default_arg_parser
     in
     let default_arg_parser =
@@ -302,10 +304,21 @@ module Command = struct
        | Some (subcommand, name) ->
          traverse subcommand xs (Name.to_string name :: subcommand_acc)
        | None ->
-         { operation = `Arg_parser default_arg_parser
-         ; args = x :: xs
-         ; subcommand = List.rev subcommand_acc
-         })
+         (* The current word doesn't correspond to a subcommand, however it's
+            possible that it's intended as an argument for the default arg
+            parser of the current command. *)
+         if Spec.Positional.is_empty
+              (Arg_parser.Private.spec default_arg_parser).positional
+         then
+           { operation = `Arg_parser default_arg_parser
+           ; args = x :: xs
+           ; subcommand = List.rev subcommand_acc
+           }
+         else
+           { operation = `Arg_parser default_arg_parser
+           ; args = x :: xs
+           ; subcommand = List.rev subcommand_acc
+           })
     | Group { children = _; default_arg_parser; doc = _ }, [] ->
       { operation = `Arg_parser default_arg_parser
       ; args = []
@@ -491,15 +504,31 @@ module Command = struct
     let () =
       match (non_ret : Non_ret.t) with
       | Help spec -> Help.pp help_style Format.std_formatter spec
-      | Manpage { spec; prose } ->
-        let manpage = { Manpage.spec; prose; version } in
+      | Manpage { prose; command_doc_spec } ->
+        let manpage = { Manpage.spec = command_doc_spec; prose; version } in
         print_endline (Manpage.to_troff_string manpage)
       | Reentrant_query { suggestions } -> List.iter suggestions ~f:print_endline
-      | Parse_error parse_error ->
+      | Parse_error { error; command_doc_spec } ->
         if test_friendly
-        then print_endline (Parse_error.to_string parse_error)
+        then print_endline (Parse_error.to_string error)
         else (
-          Printf.eprintf "%s" (Parse_error.to_string parse_error);
+          let ppf = Format.err_formatter in
+          Ansi_style.pp_with_style help_style.error ppf ~f:(fun ppf ->
+            Format.pp_print_string ppf "Error: ");
+          Format.pp_print_string ppf (Parse_error.to_string error);
+          Format.pp_force_newline ppf ();
+          Format.pp_force_newline ppf ();
+          Help.pp_usage help_style ppf command_doc_spec;
+          Format.pp_force_newline ppf ();
+          Format.pp_print_string
+            ppf
+            (sprintf
+               "For more info, try running '%s'."
+               (String.concat
+                  ((command_doc_spec.program_name :: command_doc_spec.subcommand)
+                   @ [ Name.to_string_with_dashes Built_in.help_long ])
+                  ~sep:" "));
+          Format.pp_force_newline ppf ();
           exit Parse_error.exit_code)
       | Generate_completion_script { completion_script } ->
         print_endline completion_script

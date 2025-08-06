@@ -8,6 +8,7 @@ module Style = struct
     ; arg_name : Ansi_style.t
     ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
+    ; error : Ansi_style.t
     }
 
   let plain =
@@ -16,6 +17,7 @@ module Style = struct
     ; arg_name = Ansi_style.default
     ; arg_doc = Ansi_style.default
     ; section_heading = Ansi_style.default
+    ; error = Ansi_style.default
     }
   ;;
 
@@ -23,6 +25,7 @@ module Style = struct
     { plain with
       arg_name = { Ansi_style.default with color = Some `Magenta; bold = true }
     ; section_heading = { Ansi_style.default with color = Some `Blue; bold = true }
+    ; error = { Ansi_style.default with color = Some `Red; bold = true }
     }
   ;;
 end
@@ -287,7 +290,8 @@ let pp_usage (style : Style.t) ppf (spec : Command_doc_spec.t) =
       Format.pp_print_newline ppf ();
       Format.pp_print_string ppf "       ");
     pp_command_base ppf spec;
-    Command_doc_spec.Args.pp_usage_args ~format_positional_args:Fun.id ppf spec.args)
+    Command_doc_spec.Args.pp_usage_args ~format_positional_args:Fun.id ppf spec.args);
+  pp_print_newlines ppf 1
 ;;
 
 let pp (style : Style.t) ppf (spec : Command_doc_spec.t) =
@@ -296,7 +300,6 @@ let pp (style : Style.t) ppf (spec : Command_doc_spec.t) =
       Format.pp_print_string ppf spec);
     pp_print_newlines ppf 2);
   pp_usage style ppf spec;
-  pp_print_newlines ppf 1;
   Positional_args.pp style ppf spec.args.positional;
   Named_args.pp style ppf spec.args.named;
   Subcommands.pp style ppf spec.subcommands

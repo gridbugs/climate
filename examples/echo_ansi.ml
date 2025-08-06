@@ -65,6 +65,7 @@ let () =
     ; section_heading = { ansi_style_plain with color = Some `Red }
     ; arg_name = { ansi_style_plain with color = Some `Blue }
     ; arg_doc = { ansi_style_plain with color = Some `Cyan }
+    ; error = { ansi_style_plain with color = Some `Red }
     }
   in
   match
