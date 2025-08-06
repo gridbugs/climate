@@ -31,6 +31,7 @@ module Parse_error = struct
         { attempted_argument_name : string
         ; invalid_char : char
         }
+    | No_such_subcommand of string
 
   let to_string = function
     | Arg_lacks_param name ->
@@ -96,6 +97,7 @@ module Parse_error = struct
         "Invalid character %C in argument name %S"
         invalid_char
         attempted_argument_name
+    | No_such_subcommand subcommand -> sprintf "No such subcommand: %s" subcommand
   ;;
 
   let exit_code = 124

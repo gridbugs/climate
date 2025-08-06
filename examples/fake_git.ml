@@ -80,7 +80,6 @@ let () =
     ; subcommand
         "bisect"
         (group
-           ~default_arg_parser:bisect_common
            ~doc:"Binary search through previous commits."
            [ subcommand "start" (singleton bisect_common ~doc:"Start a bisect.")
            ; subcommand "reset" (singleton bisect_common ~doc:"Stop a bisect.")

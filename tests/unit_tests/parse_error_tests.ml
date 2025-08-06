@@ -104,3 +104,13 @@ let%expect_test "equals sign in short sequence" =
   run command [ "-=f"; "42" ];
   [%expect {| Invalid character '=' in argument name "=" |}]
 ;;
+
+let%expect_test "no such subcommand" =
+  let term = Arg_parser.unit in
+  let command =
+    let open Command in
+    group [ subcommand "foo" (group [ subcommand "bar" (singleton term) ]) ]
+  in
+  run command [ "foo"; "baz" ];
+  [%expect {| No such subcommand: baz |}]
+;;

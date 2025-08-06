@@ -25,6 +25,7 @@ module Parse_error : sig
         { attempted_argument_name : string
         ; invalid_char : char
         }
+    | No_such_subcommand of string
 
   val to_string : t -> string
   val exit_code : int
