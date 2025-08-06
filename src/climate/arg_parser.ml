@@ -9,10 +9,22 @@ let name_of_string_exn string =
   | Error e -> Error.spec_error (Invalid_name (string, e))
 ;;
 
+module Command_doc = struct
+  (* Documentation about an entire (sub)command. Not relevant to parsing
+     arguments but needs to be included in some error messages. *)
+  type t =
+    { doc : string option
+    ; child_subcommands : Subcommand.t list
+    }
+
+  let empty = { doc = None; child_subcommands = [] }
+end
+
 module Context = struct
   type t =
     { raw_arg_table : Raw_arg_table.t
     ; command_line : Command_line.Rich.t
+    ; command_doc_spec : Command_doc_spec.t
     }
 end
 
@@ -30,17 +42,49 @@ type 'a arg_compute = Context.t -> ('a, Non_ret.t) result
 type 'a t =
   { arg_spec : Spec.t
   ; arg_compute : 'a arg_compute
+  ; command_doc : Command_doc.t
   }
+
+(* Create a parser with no command documentation. This is the standard way of
+   creating a parser, as conceptually we often don't need to think of a
+   parser as even being part of a command. The main exception to this is when
+   returning a [Non_ret.t], as these must contain a specification of the
+   current command for printing usage strings in response to (say) an error
+   parsing command line arguments. The [command_doc] field is set when adding
+   the --help argument, and it will be added to the context passed to
+   [arg_compute] so argument parsing logic has access to the final command
+   documentation for use in error messages. *)
+let with_empty_command_doc ~arg_spec ~arg_compute =
+  { arg_spec; arg_compute; command_doc = Command_doc.empty }
+;;
 
 let spec { arg_spec; _ } = arg_spec
 
+let command_doc_spec
+  arg_spec
+  (command_doc : Command_doc.t)
+  (command_line : Command_line.Rich.t)
+  =
+  let args = Spec.command_doc_spec arg_spec in
+  let subcommands =
+    List.map command_doc.child_subcommands ~f:Subcommand.command_doc_spec
+  in
+  { Command_doc_spec.program_name = command_line.program
+  ; subcommand = command_line.subcommand
+  ; doc = command_doc.doc
+  ; args
+  ; subcommands
+  }
+;;
+
 let eval t ~(command_line : Command_line.Rich.t) ~ignore_errors =
   let open Result.O in
+  let command_doc_spec = command_doc_spec t.arg_spec t.command_doc command_line in
   let* raw_arg_table =
     Raw_arg_table.parse t.arg_spec command_line.args ~ignore_errors
-    |> Result.map_error ~f:(fun e -> Non_ret.Parse_error e)
+    |> Result.map_error ~f:(fun error -> Non_ret.Parse_error { command_doc_spec; error })
   in
-  let context = { Context.raw_arg_table; command_line } in
+  let context = { Context.raw_arg_table; command_line; command_doc_spec } in
   t.arg_compute context
 ;;
 
@@ -258,12 +302,26 @@ let list ?(sep = ',') element_conv =
   { parse; print; default_value_name = "LIST"; completion = None }
 ;;
 
-let map { arg_spec; arg_compute } ~f =
-  { arg_spec; arg_compute = (fun context -> Result.map ~f (arg_compute context)) }
+let map { arg_spec; arg_compute; command_doc } ~f =
+  { arg_spec
+  ; arg_compute = (fun context -> Result.map ~f (arg_compute context))
+  ; command_doc
+  }
 ;;
 
-let map' { arg_spec; arg_compute } ~f =
-  { arg_spec; arg_compute = (fun context -> Result.bind ~f (arg_compute context)) }
+let map' { arg_spec; arg_compute; command_doc } ~f =
+  { arg_spec
+  ; arg_compute = (fun context -> Result.bind ~f (arg_compute context))
+  ; command_doc
+  }
+;;
+
+let map_context' { arg_spec; arg_compute; command_doc } ~f =
+  { arg_spec
+  ; arg_compute =
+      (fun context -> Result.bind ~f:(fun x -> f x context) (arg_compute context))
+  ; command_doc
+  }
 ;;
 
 let both x y =
@@ -274,6 +332,10 @@ let both x y =
         let+ x_value = x.arg_compute context
         and+ y_value = y.arg_compute context in
         x_value, y_value)
+  ; command_doc =
+      (* It's not expected that args will be both'd once their command
+         documentation has been added. *)
+      y.command_doc
   }
 ;;
 
@@ -295,42 +357,52 @@ let names_of_strings strings =
   | Some strings -> Nonempty_list.map strings ~f:name_of_string_exn
 ;;
 
-let const x = { arg_spec = Spec.empty; arg_compute = (fun _context -> Ok x) }
+let const x =
+  with_empty_command_doc ~arg_spec:Spec.empty ~arg_compute:(fun _context -> Ok x)
+;;
+
 let unit = const ()
 
 let argv0 =
-  { arg_spec = Spec.empty
-  ; arg_compute = (fun context -> Ok context.command_line.program)
-  }
+  with_empty_command_doc ~arg_spec:Spec.empty ~arg_compute:(fun context ->
+    Ok context.command_line.program)
 ;;
 
-let last t =
-  map' t ~f:(fun list ->
-    match List.last list with
-    | None ->
-      Error
-        (Non_ret.Parse_error
-           (Parse_error.Conv_failed { locator = None; message = "Unexpected empty list" }))
-    | Some x -> Ok x)
+let last { arg_spec; arg_compute; command_doc } =
+  { arg_spec
+  ; command_doc
+  ; arg_compute =
+      (fun context ->
+        Result.bind (arg_compute context) ~f:(fun list ->
+          match List.last list with
+          | None ->
+            Error
+              (Non_ret.Parse_error
+                 { error =
+                     Conv_failed { locator = None; message = "Unexpected empty list" }
+                 ; command_doc_spec = context.command_doc_spec
+                 })
+          | Some x -> Ok x))
+  }
 ;;
 
 let named_multi_gen info conv =
-  { arg_spec = Spec.create_named info
-  ; arg_compute =
-      (fun context ->
-        Raw_arg_table.get_opts_names_by_name context.raw_arg_table info.names
-        |> List.map ~f:(fun (name, value) ->
-          conv.parse value
-          |> Result.map_error ~f:(fun (`Msg message) ->
-            Non_ret.Parse_error
-              (Parse_error.Conv_failed { locator = Some (`Named name); message })))
-        |> Result.List.all)
-  }
+  with_empty_command_doc ~arg_spec:(Spec.create_named info) ~arg_compute:(fun context ->
+    Raw_arg_table.get_opts_names_by_name context.raw_arg_table info.names
+    |> List.map ~f:(fun (name, value) ->
+      conv.parse value
+      |> Result.map_error ~f:(fun (`Msg message) ->
+        Non_ret.Parse_error
+          { error = Conv_failed { locator = Some (`Named name); message }
+          ; command_doc_spec = context.command_doc_spec
+          }))
+    |> Result.List.all)
 ;;
 
 let named_opt_gen (info : Spec.Named.Info.t) conv ~allow_many =
   named_multi_gen info conv
-  |> map' ~f:(function
+  |> map_context' ~f:(fun xs context ->
+    match xs with
     | [] -> Ok None
     | [ x ] -> Ok (Some x)
     | x :: _ as many ->
@@ -339,7 +411,9 @@ let named_opt_gen (info : Spec.Named.Info.t) conv ~allow_many =
       else
         Error
           (Non_ret.Parse_error
-             (Parse_error.Named_opt_appeared_multiple_times (info.names, List.length many))))
+             { error = Named_opt_appeared_multiple_times (info.names, List.length many)
+             ; command_doc_spec = context.command_doc_spec
+             }))
 ;;
 
 let named_multi ?doc ?value_name ?hidden ?completion names conv =
@@ -424,33 +498,41 @@ let named_req ?doc ?value_name ?hidden ?completion names conv =
     ; repeated = false
     }
     conv
-  |> map' ~f:(function
+  |> map_context' ~f:(fun xs context ->
+    match xs with
     | [] ->
-      Error (Non_ret.Parse_error (Parse_error.Named_req_missing (names_of_strings names)))
+      Error
+        (Non_ret.Parse_error
+           { error = Named_req_missing (names_of_strings names)
+           ; command_doc_spec = context.command_doc_spec
+           })
     | [ x ] -> Ok x
     | many ->
       Error
         (Non_ret.Parse_error
-           (Parse_error.Named_req_appeared_multiple_times
-              (names_of_strings names, List.length many))))
+           { error =
+               Named_req_appeared_multiple_times (names_of_strings names, List.length many)
+           ; command_doc_spec = context.command_doc_spec
+           }))
 ;;
 
 let flag_count ?doc ?hidden names =
   let names = names_of_strings names in
-  { arg_spec =
-      Spec.create_flag
-        names
-        ~doc
-        ~hidden:(Option.value hidden ~default:false)
-        ~repeated:true
-  ; arg_compute =
-      (fun context -> Ok (Raw_arg_table.get_flag_count_names context.raw_arg_table names))
-  }
+  with_empty_command_doc
+    ~arg_spec:
+      (Spec.create_flag
+         names
+         ~doc
+         ~hidden:(Option.value hidden ~default:false)
+         ~repeated:true)
+    ~arg_compute:(fun context ->
+      Ok (Raw_arg_table.get_flag_count_names context.raw_arg_table names))
 ;;
 
 let flag_gen ?doc names ~allow_many =
   flag_count ?doc names
-  |> map' ~f:(function
+  |> map_context' ~f:(fun n context ->
+    match n with
     | 0 -> Ok false
     | 1 -> Ok true
     | n ->
@@ -459,7 +541,9 @@ let flag_gen ?doc names ~allow_many =
       else
         Error
           (Non_ret.Parse_error
-             (Parse_error.Flag_appeared_multiple_times (names_of_strings names, n))))
+             { error = Flag_appeared_multiple_times (names_of_strings names, n)
+             ; command_doc_spec = context.command_doc_spec
+             }))
 ;;
 
 let flag = flag_gen ~allow_many:false
@@ -470,26 +554,27 @@ let pos_single_gen i conv ~doc ~value_name ~required ~completion =
     | Some _ -> i
     | None -> Error.spec_error (Negative_position i)
   in
-  { arg_spec =
-      Spec.create_positional
-        (Spec.Positional.single_at_index
-           i
-           ~value_name:(Option.value value_name ~default:conv.default_value_name)
-           ~required
-           ~completion:(conv_untyped_completion_opt_with_default conv completion)
-           ~doc)
-  ; arg_compute =
-      (fun context ->
-        match Raw_arg_table.get_pos context.raw_arg_table i with
-        | None -> Ok None
-        | Some x ->
-          (match conv.parse x with
-           | Ok x -> Ok (Some x)
-           | Error (`Msg message) ->
-             Error
-               (Non_ret.Parse_error
-                  (Parse_error.Conv_failed { locator = Some (`Positional i); message }))))
-  }
+  with_empty_command_doc
+    ~arg_spec:
+      (Spec.create_positional
+         (Spec.Positional.single_at_index
+            i
+            ~value_name:(Option.value value_name ~default:conv.default_value_name)
+            ~required
+            ~completion:(conv_untyped_completion_opt_with_default conv completion)
+            ~doc))
+    ~arg_compute:(fun context ->
+      match Raw_arg_table.get_pos context.raw_arg_table i with
+      | None -> Ok None
+      | Some x ->
+        (match conv.parse x with
+         | Ok x -> Ok (Some x)
+         | Error (`Msg message) ->
+           Error
+             (Non_ret.Parse_error
+                { error = Conv_failed { locator = Some (`Positional i); message }
+                ; command_doc_spec = context.command_doc_spec
+                })))
 ;;
 
 let pos_opt ?doc ?value_name ?completion i conv =
@@ -505,29 +590,34 @@ let pos_with_default ?doc ?value_name ?completion i conv ~default =
 
 let pos_req ?doc ?value_name ?completion i conv =
   pos_single_gen i conv ~doc ~value_name ~required:true ~completion
-  |> map' ~f:(function
+  |> map_context' ~f:(fun x context ->
+    match x with
     | Some x -> Ok x
-    | None -> Error (Non_ret.Parse_error (Parse_error.Pos_req_missing i)))
+    | None ->
+      Error
+        (Non_ret.Parse_error
+           { error = Pos_req_missing i; command_doc_spec = context.command_doc_spec }))
 ;;
 
 let pos_left_gen i conv ~doc ~value_name ~required ~completion =
-  { arg_spec =
-      Spec.create_positional
-        (Spec.Positional.all_below_exclusive
-           i
-           ~value_name:(Option.value value_name ~default:conv.default_value_name)
-           ~required
-           ~completion:(conv_untyped_completion_opt_with_default conv completion)
-           ~doc)
-  ; arg_compute =
-      (fun context ->
-        let left, _ = List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i in
-        List.mapi left ~f:(fun i x ->
-          Result.map_error (conv.parse x) ~f:(fun (`Msg message) ->
-            Non_ret.Parse_error
-              (Parse_error.Conv_failed { locator = Some (`Positional i); message })))
-        |> Result.List.all)
-  }
+  with_empty_command_doc
+    ~arg_spec:
+      (Spec.create_positional
+         (Spec.Positional.all_below_exclusive
+            i
+            ~value_name:(Option.value value_name ~default:conv.default_value_name)
+            ~required
+            ~completion:(conv_untyped_completion_opt_with_default conv completion)
+            ~doc))
+    ~arg_compute:(fun context ->
+      let left, _ = List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i in
+      List.mapi left ~f:(fun i x ->
+        Result.map_error (conv.parse x) ~f:(fun (`Msg message) ->
+          Non_ret.Parse_error
+            { error = Conv_failed { locator = Some (`Positional i); message }
+            ; command_doc_spec = context.command_doc_spec
+            }))
+      |> Result.List.all)
 ;;
 
 let pos_left ?doc ?value_name ?completion i conv =
@@ -535,24 +625,25 @@ let pos_left ?doc ?value_name ?completion i conv =
 ;;
 
 let pos_right_inclusive ?doc ?value_name ?completion i_inclusive conv =
-  { arg_spec =
-      Spec.create_positional
-        (Spec.Positional.all_above_inclusive
-           i_inclusive
-           ~value_name:(Option.value value_name ~default:conv.default_value_name)
-           ~completion:(conv_untyped_completion_opt_with_default conv completion)
-           ~doc)
-  ; arg_compute =
-      (fun context ->
-        let _, right =
-          List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i_inclusive
-        in
-        List.mapi right ~f:(fun i x ->
-          Result.map_error (conv.parse x) ~f:(fun (`Msg message) ->
-            Non_ret.Parse_error
-              (Parse_error.Conv_failed { locator = Some (`Positional i); message })))
-        |> Result.List.all)
-  }
+  with_empty_command_doc
+    ~arg_spec:
+      (Spec.create_positional
+         (Spec.Positional.all_above_inclusive
+            i_inclusive
+            ~value_name:(Option.value value_name ~default:conv.default_value_name)
+            ~completion:(conv_untyped_completion_opt_with_default conv completion)
+            ~doc))
+    ~arg_compute:(fun context ->
+      let _, right =
+        List.split_n (Raw_arg_table.get_pos_all context.raw_arg_table) i_inclusive
+      in
+      List.mapi right ~f:(fun i x ->
+        Result.map_error (conv.parse x) ~f:(fun (`Msg message) ->
+          Non_ret.Parse_error
+            { error = Conv_failed { locator = Some (`Positional i); message }
+            ; command_doc_spec = context.command_doc_spec
+            }))
+      |> Result.List.all)
 ;;
 
 let pos_right ?doc ?value_name ?completion i_exclusive conv =
@@ -564,18 +655,6 @@ let pos_all ?doc ?value_name ?completion conv =
 ;;
 
 let validate t = Spec.validate t.arg_spec
-
-let command_doc_spec arg_spec (command_line : Command_line.Rich.t) ~doc ~child_subcommands
-  =
-  let args = Spec.command_doc_spec arg_spec in
-  let subcommands = List.map child_subcommands ~f:Subcommand.command_doc_spec in
-  { Command_doc_spec.program_name = command_line.program
-  ; subcommand = command_line.subcommand
-  ; doc
-  ; args
-  ; subcommands
-  }
-;;
 
 let help_spec =
   Spec.create_flag
@@ -589,38 +668,34 @@ let manpage_spec =
   Spec.create_flag Built_in.manpage_names ~doc:None ~hidden:true ~repeated:false
 ;;
 
-let usage ~doc ~child_subcommands =
-  { arg_spec = Spec.empty
-  ; arg_compute =
-      (fun context ->
-        Error
-          (Non_ret.Help
-             (command_doc_spec help_spec context.command_line ~doc ~child_subcommands)))
-  }
+let usage =
+  with_empty_command_doc ~arg_spec:Spec.empty ~arg_compute:(fun context ->
+    Error (Non_ret.Help context.command_doc_spec))
 ;;
 
-let add_help_and_manpage { arg_spec; arg_compute } ~doc ~child_subcommands ~prose =
+let add_help_and_manpage
+  { arg_spec; arg_compute; command_doc = _ }
+  ~doc
+  ~child_subcommands
+  ~prose
+  =
+  let command_doc = { Command_doc.doc; child_subcommands } in
   let arg_spec = arg_spec |> Spec.merge help_spec |> Spec.merge manpage_spec in
   { arg_spec
   ; arg_compute =
       (fun context ->
         if Raw_arg_table.get_flag_count_names context.raw_arg_table Built_in.help_names
            > 0
-        then
-          Error
-            (Non_ret.Help
-               (command_doc_spec arg_spec context.command_line ~doc ~child_subcommands))
+        then Error (Non_ret.Help context.command_doc_spec)
         else if Raw_arg_table.get_flag_count_names
                   context.raw_arg_table
                   Built_in.manpage_names
                 > 0
         then (
           let prose = Option.value prose ~default:Manpage.Prose.empty in
-          let spec =
-            command_doc_spec arg_spec context.command_line ~doc ~child_subcommands
-          in
-          Error (Non_ret.Manpage { spec; prose }))
+          Error (Non_ret.Manpage { prose; command_doc_spec = context.command_doc_spec }))
         else arg_compute context)
+  ; command_doc
   }
 ;;
 

@@ -7,6 +7,7 @@ module Style : sig
     ; arg_name : Ansi_style.t
     ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
+    ; error : Ansi_style.t
     }
 
   (** An opinionated default value with some colours and formatting *)
@@ -16,4 +17,5 @@ module Style : sig
   val plain : t
 end
 
+val pp_usage : Style.t -> Format.formatter -> Command_doc_spec.t -> unit
 val pp : Style.t -> Format.formatter -> Command_doc_spec.t -> unit
