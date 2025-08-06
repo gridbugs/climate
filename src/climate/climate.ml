@@ -291,41 +291,62 @@ module Command = struct
     ; subcommand : string list
     }
 
-  let rec traverse t args subcommand_acc =
-    match t, args with
-    | Singleton { arg_parser; doc = _ }, args ->
-      { operation = `Arg_parser arg_parser; args; subcommand = List.rev subcommand_acc }
-    | Group { children; default_arg_parser; doc = _ }, x :: xs ->
-      let subcommand =
-        List.find_map children ~f:(fun { info; command } ->
-          if Subcommand_info.matches info x then Some (command, info.name) else None)
-      in
-      (match subcommand with
-       | Some (subcommand, name) ->
-         traverse subcommand xs (Name.to_string name :: subcommand_acc)
-       | None ->
-         (* The current word doesn't correspond to a subcommand, however it's
-            possible that it's intended as an argument for the default arg
-            parser of the current command. *)
-         if Spec.Positional.is_empty
-              (Arg_parser.Private.spec default_arg_parser).positional
-         then
-           { operation = `Arg_parser default_arg_parser
-           ; args = x :: xs
-           ; subcommand = List.rev subcommand_acc
-           }
-         else
-           { operation = `Arg_parser default_arg_parser
-           ; args = x :: xs
-           ; subcommand = List.rev subcommand_acc
-           })
-    | Group { children = _; default_arg_parser; doc = _ }, [] ->
-      { operation = `Arg_parser default_arg_parser
-      ; args = []
-      ; subcommand = List.rev subcommand_acc
-      }
-    | Internal internal, args ->
-      { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
+  let traverse t (command_line : Command_line.Raw.t) =
+    let rec loop t args subcommand_acc =
+      match t, args with
+      | Singleton { arg_parser; doc = _ }, args ->
+        Ok
+          { operation = `Arg_parser arg_parser
+          ; args
+          ; subcommand = List.rev subcommand_acc
+          }
+      | Group { children; default_arg_parser; doc = _ }, x :: xs ->
+        let subcommand =
+          List.find_map children ~f:(fun { info; command } ->
+            if Subcommand_info.matches info x then Some (command, info.name) else None)
+        in
+        (match subcommand with
+         | Some (subcommand, name) ->
+           loop subcommand xs (Name.to_string name :: subcommand_acc)
+         | None ->
+           (* The current word doesn't correspond to a subcommand, however it's
+              possible that it's intended as an argument for the default arg
+              parser of the current command. *)
+           if (not (String.starts_with x ~prefix:"-"))
+              && Spec.Positional.is_empty
+                   (Arg_parser.Private.spec default_arg_parser).positional
+           then (
+             (* A positional argument was passed when the default arg parser
+                doesn't accept any positional arguments, so it's very likely that
+                the user mistyped the name of a subcommand instead. Throw a parse
+                error to that affect. *)
+             let rich_command_line =
+               { Command_line.Rich.program = command_line.program
+               ; args = command_line.args
+               ; subcommand = subcommand_acc
+               }
+             in
+             let command_doc_spec =
+               Arg_parser.Private.command_doc_spec default_arg_parser rich_command_line
+             in
+             Error
+               (Non_ret.Parse_error { error = No_such_subcommand x; command_doc_spec }))
+           else
+             Ok
+               { operation = `Arg_parser default_arg_parser
+               ; args = x :: xs
+               ; subcommand = List.rev subcommand_acc
+               })
+      | Group { children = _; default_arg_parser; doc = _ }, [] ->
+        Ok
+          { operation = `Arg_parser default_arg_parser
+          ; args = []
+          ; subcommand = List.rev subcommand_acc
+          }
+      | Internal internal, args ->
+        Ok { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
+    in
+    loop t command_line.args []
   ;;
 
   let rec completion_spec = function
@@ -422,8 +443,14 @@ module Command = struct
       let all_reentrants = Completion_spec.all_reentrants completion_spec in
       match List.nth_opt all_reentrants t.index with
       | Some reentrant ->
-        let { subcommand; args; _ } = traverse command t.command_line.args [] in
-        reentrant { Command_line.Rich.program = t.command_line.program; subcommand; args }
+        (match traverse command t.command_line with
+         | Ok { subcommand; args; _ } ->
+           reentrant
+             { Command_line.Rich.program = t.command_line.program; subcommand; args }
+         | Error _ ->
+           failwith
+             "reentrant query was invoked with an invalid command, which the completion \
+              script should never do")
       | None ->
         failwith
           "reentrant query was invoked with an out of bounds argument, which the \
@@ -451,7 +478,7 @@ module Command = struct
         let suggestions = Reentrant_query.run_query reentrant_query t completion_spec in
         Error (Non_ret.Reentrant_query { suggestions })
     in
-    let { operation; args; subcommand } = traverse t raw_command_line.args [] in
+    let* { operation; args; subcommand } = traverse t raw_command_line in
     let command_line =
       { Command_line.Rich.program = raw_command_line.program; args; subcommand }
     in
@@ -523,7 +550,7 @@ module Command = struct
           Format.pp_print_string
             ppf
             (sprintf
-               "For more info, try running '%s'."
+               "For more info, try running `%s`."
                (String.concat
                   ((command_doc_spec.program_name :: command_doc_spec.subcommand)
                    @ [ Name.to_string_with_dashes Built_in.help_long ])

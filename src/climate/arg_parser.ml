@@ -732,4 +732,8 @@ module Private = struct
   let usage = usage
   let named_opt_for_internal = named_opt_for_internal
   let eval = eval
+
+  let command_doc_spec { arg_spec; command_doc; _ } command_line =
+    command_doc_spec arg_spec command_doc command_line
+  ;;
 end

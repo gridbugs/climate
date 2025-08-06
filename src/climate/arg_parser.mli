@@ -291,4 +291,6 @@ module Private : sig
     -> command_line:Command_line.Rich.t
     -> ignore_errors:bool
     -> ('a, Non_ret.t) result
+
+  val command_doc_spec : _ t -> Command_line.Rich.t -> Command_doc_spec.t
 end

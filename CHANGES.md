@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Include usage string in all parse errors, and detect invalid subcommands
+  instead of treating them as positionan arguments. (#17, fixes #15)
+
 ## 0.6.0
 
 ### Fixes
