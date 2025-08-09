@@ -26,7 +26,10 @@ module Parse_error = struct
         { locator : [ `Named of Name.t | `Positional of int ] option
         ; message : string
         }
-    | Too_many_positional_arguments of { max : int }
+    | Too_many_positional_arguments of
+        { max : int
+        ; first_excess_argument : string
+        }
     | Invalid_char_in_argument_name of
         { attempted_argument_name : string
         ; invalid_char : char
@@ -88,10 +91,16 @@ module Parse_error = struct
        | Some (`Positional i) ->
          sprintf "Failed to parse the argument at position %d: %s" i message
        | None -> sprintf "Failed to parse the argument: %s" message)
-    | Too_many_positional_arguments { max } ->
+    | Too_many_positional_arguments { max = 0; first_excess_argument } ->
       sprintf
-        "Too many positional arguments. At most %d positional arguments may be passed."
+        "This command does not accept any positional arguments. First excess argument: %s"
+        first_excess_argument
+    | Too_many_positional_arguments { max; first_excess_argument } ->
+      sprintf
+        "Too many positional arguments. At most %d positional arguments may be passed. \
+         First excess argument: %s"
         max
+        first_excess_argument
     | Invalid_char_in_argument_name { attempted_argument_name; invalid_char } ->
       sprintf
         "Invalid character %C in argument name %S"

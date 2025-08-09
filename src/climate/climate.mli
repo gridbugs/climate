@@ -114,6 +114,11 @@ module Command : sig
       function [completion_script_bash]. *)
   val print_completion_script_bash : _ t
 
+  (** A command group with the same subcommands (transitively) as the parent of
+      this command in the subcommand hierarchy, however each subcommand under
+      this command just prints the usage string for that command. *)
+  val help : _ t
+
   (** Returns a bash script that can be sourced in a shell to register
       completions for the command.
 

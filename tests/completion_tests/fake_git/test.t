@@ -11,6 +11,7 @@ Make a fake .git directory with some branches.
   bisect
   checkout
   commit
+  help
   log
 
   $ x "fake-git checkout " \
@@ -91,6 +92,7 @@ Test that positional arguments and subcommands are both listed.
   >   "                ^"
   bad
   good
+  help
   reset
   start
 
@@ -127,3 +129,36 @@ Test completion on files whose names contain spaces.
   dir/a b c
   dir/a b c d
   dir/e f g h
+
+Test the completion of commands under help commands.
+  $ x "fake-git h" \
+  >   "           ^"
+  help
+
+  $ x "fake-git help " \
+  >   "              ^"
+  bisect
+  checkout
+  commit
+  help
+  log
+
+  $ x "fake-git help commit -" \
+  >   "                      ^"
+  --help
+  --manpage
+  -h
+
+  $ x "fake-git help bisect s" \
+  >   "                      ^"
+  start
+
+  $ x "fake-git bisect help s" \
+  >   "                      ^"
+  start
+
+  $ x "fake-git bisect help start -" \
+  >   "                            ^"
+  --help
+  --manpage
+  -h

@@ -180,15 +180,34 @@ module Program_name = struct
   ;;
 end
 
+let help_command_arg_parser () =
+  Arg_parser.Private.usage ~error:false ~message:None ~override_doc:None
+;;
+
 module Command = struct
-  type internal = Print_completion_script_bash
+  type internal =
+    | Print_completion_script_bash
+    | Help
 
   let internal_doc = function
     | Print_completion_script_bash -> "Print the bash completion script for this program."
+    | Help -> "Print documentation for a subcommand."
   ;;
 
   let internal_arg_spec = function
     | Print_completion_script_bash -> Arg_parser.Private.spec Completion_config.arg_parser
+    | Help -> Arg_parser.Private.spec (help_command_arg_parser ())
+  ;;
+
+  let finalized_print_completion_script_bash_arg_parser =
+    Arg_parser.Private.finalize
+      Completion_config.arg_parser
+      ~doc:(Some (internal_doc Print_completion_script_bash))
+      ~child_subcommands:[]
+      ~prose:None
+      ~use_error_subcommand:false
+      ~help_only_doc:None
+      ~help_only_subcommands:None
   ;;
 
   module Subcommand_info = struct
@@ -219,6 +238,7 @@ module Command = struct
   and 'a subcommand =
     { info : Subcommand_info.t
     ; command : 'a t
+    ; help : bool (* This subcommand is a help subcommand *)
     }
 
   let command_doc = function
@@ -236,7 +256,14 @@ module Command = struct
     let doc = doc in
     Singleton
       { arg_parser =
-          Arg_parser.Private.finalize arg_parser ~doc ~child_subcommands:[] ~prose
+          Arg_parser.Private.finalize
+            arg_parser
+            ~doc
+            ~child_subcommands:[]
+            ~prose
+            ~use_error_subcommand:false
+            ~help_only_doc:None
+            ~help_only_subcommands:None
       ; doc
       }
   ;;
@@ -244,31 +271,45 @@ module Command = struct
   let subcommand ?(hidden = false) ?(aliases = []) name_string command =
     let name = name_of_string_exn name_string in
     let aliases = List.map aliases ~f:name_of_string_exn in
-    { info = { Subcommand_info.name; hidden; aliases }; command }
+    { info = { Subcommand_info.name; hidden; aliases }; command; help = false }
   ;;
 
-  let group ?default_arg_parser ?doc ?prose children =
-    let child_subcommands =
-      List.filter_map children ~f:(fun { info; command } ->
-        if info.hidden
-        then None
-        else
-          Some
-            { Subcommand.name = info.name
-            ; aliases = info.aliases
-            ; doc = command_doc command
-            ; arg_spec = command_arg_spec command
-            })
+  let expand_subcommand_info subcommands =
+    List.filter_map subcommands ~f:(fun { info; command; help = _ } ->
+      if info.hidden
+      then None
+      else
+        Some
+          { Subcommand.name = info.name
+          ; aliases = info.aliases
+          ; doc = command_doc command
+          ; arg_spec = command_arg_spec command
+          })
+  ;;
+
+  let group' ~default_arg_parser ~doc ~prose children =
+    let child_subcommands = expand_subcommand_info children in
+    let finalize parser_ =
+      Arg_parser.Private.finalize
+        parser_
+        ~doc
+        ~child_subcommands
+        ~prose
+        ~use_error_subcommand:false
+        ~help_only_doc:None
+        ~help_only_subcommands:None
     in
     let default_arg_parser =
       match default_arg_parser with
-      | None ->
+      | `None ->
         (* By default, use an arg parser that just prints a usage message. *)
         Arg_parser.Private.usage
-      | Some default_arg_parser -> default_arg_parser
-    in
-    let default_arg_parser =
-      Arg_parser.Private.finalize default_arg_parser ~doc ~child_subcommands ~prose
+          ~error:true
+          ~message:(Some "This command requires a subcommand but none was specified.")
+          ~override_doc:None
+        |> finalize
+      | `Not_finalized default_arg_parser -> finalize default_arg_parser
+      | `Finalized default_arg_parser -> default_arg_parser
     in
     let () =
       match
@@ -283,31 +324,156 @@ module Command = struct
     Group { children; default_arg_parser; doc }
   ;;
 
-  let print_completion_script_bash = Internal Print_completion_script_bash
+  let group ?default_arg_parser ?doc ?prose children =
+    let default_arg_parser =
+      match default_arg_parser with
+      | None -> `None
+      | Some default_arg_parser -> `Not_finalized default_arg_parser
+    in
+    group' ~default_arg_parser ~doc ~prose children
+  ;;
 
-  type 'a traverse =
-    { operation : [ `Arg_parser of 'a Arg_parser.t | `Internal of internal ]
-    ; args : string list
-    ; subcommand : string list
+  (* Recursively replace all parsers in t with parsers which just print their
+     usage strings rather than having any side-effects. Used to implement help
+     commands. The provided [finalize] function makes it so that the help
+     messages for the replaced parsers references the original help command's
+     subcommands rather than whichever command was run with "--help". *)
+  let rec replace_with_usage t ~finalize =
+    match t with
+    | Singleton { arg_parser; doc } ->
+      let arg_parser =
+        Arg_parser.Private.to_usage arg_parser |> finalize ~child_subcommands:[]
+      in
+      Singleton { arg_parser; doc }
+    | Internal Print_completion_script_bash ->
+      let arg_parser =
+        Arg_parser.Private.to_usage Completion_config.arg_parser
+        |> finalize ~child_subcommands:[]
+      in
+      Singleton { arg_parser; doc = Some (internal_doc Print_completion_script_bash) }
+    | Internal Help ->
+      let arg_parser =
+        Arg_parser.Private.usage
+          ~error:false
+          ~message:None
+          ~override_doc:(Some "Subcommand help. Pass the name of a subcommand for info.")
+        |> finalize ~child_subcommands:[]
+      in
+      Singleton { arg_parser; doc = Some (internal_doc Help) }
+    | Group { children; default_arg_parser; doc } ->
+      let child_subcommands = expand_subcommand_info children in
+      let default_arg_parser =
+        Arg_parser.Private.to_usage default_arg_parser |> finalize ~child_subcommands
+      in
+      let children =
+        List.map children ~f:(fun { info; command; help } ->
+          let command = replace_with_usage command ~finalize in
+          { info; command; help })
+      in
+      Group { children; default_arg_parser; doc }
+  ;;
+
+  (* Replace all occurences of [Internal Help] with a command group of doc
+     commands matching the layout of its sibling subcommands. *)
+  let preprocess_help t =
+    let rec loop ~siblings ~doc t =
+      match t with
+      | Singleton _ | Internal Print_completion_script_bash -> t
+      | Group { children; default_arg_parser; doc } ->
+        let children =
+          List.map children ~f:(fun { info; command; help } ->
+            let help =
+              match command with
+              | Internal Help -> true
+              | _ -> help
+            in
+            { info; command = loop ~siblings:children command ~doc; help })
+        in
+        Group { children; default_arg_parser; doc }
+      | Internal Help ->
+        let help_only_subcommands = expand_subcommand_info siblings in
+        let finalize ~child_subcommands command =
+          Arg_parser.Private.finalize
+            ~doc
+            ~child_subcommands
+            ~prose:None
+            ~use_error_subcommand:true
+            ~help_only_doc:
+              (Some "Subcommand help. Pass the name of a subcommand (see below) for info.")
+            ~help_only_subcommands:(Some help_only_subcommands)
+            command
+        in
+        let siblings =
+          List.map siblings ~f:(fun { info; command; help } ->
+            { info; command = replace_with_usage command ~finalize; help })
+        in
+        let default_arg_parser =
+          `Finalized
+            (help_command_arg_parser ()
+             |> finalize ~child_subcommands:help_only_subcommands)
+        in
+        group' ~doc ~default_arg_parser ~prose:None siblings
+    in
+    loop ~siblings:[] ~doc:None t
+  ;;
+
+  let print_completion_script_bash = Internal Print_completion_script_bash
+  let help = Internal Help
+
+  type traverse_help =
+    { subcommand_up_to_help : string list
+    ; subcommand_excluding_help : string list
     }
 
-  let traverse t (command_line : Command_line.Raw.t) =
-    let rec loop t args subcommand_acc =
+  type 'a traverse =
+    { operation : [ `Arg_parser of 'a Arg_parser.t | `Print_completion_script_bash ]
+    ; args : string list
+    ; subcommand : string list
+    ; raw_command_line : Command_line.Raw.t
+    ; traverse_help : traverse_help option
+    }
+
+  let traverse_to_rich_command_line { args; subcommand; raw_command_line; _ } =
+    { Command_line.Rich.program = raw_command_line.program; args; subcommand }
+  ;;
+
+  let traverse t (raw_command_line : Command_line.Raw.t) =
+    let rec loop t args subcommand_acc ~traverse_help =
       match t, args with
       | Singleton { arg_parser; doc = _ }, args ->
         Ok
           { operation = `Arg_parser arg_parser
           ; args
           ; subcommand = List.rev subcommand_acc
+          ; raw_command_line
+          ; traverse_help
           }
       | Group { children; default_arg_parser; doc = _ }, x :: xs ->
         let subcommand =
-          List.find_map children ~f:(fun { info; command } ->
-            if Subcommand_info.matches info x then Some (command, info.name) else None)
+          List.find_map children ~f:(fun { info; command; help } ->
+            if Subcommand_info.matches info x
+            then Some (command, info.name, help)
+            else None)
         in
         (match subcommand with
-         | Some (subcommand, name) ->
-           loop subcommand xs (Name.to_string name :: subcommand_acc)
+         | Some (subcommand, name, this_subcommand_is_help) ->
+           let subcommand_acc_including_current = Name.to_string name :: subcommand_acc in
+           let traverse_help =
+             match traverse_help, this_subcommand_is_help with
+             | Some { subcommand_up_to_help; subcommand_excluding_help }, _ ->
+               Some
+                 { subcommand_up_to_help
+                 ; subcommand_excluding_help =
+                     Name.to_string name :: subcommand_excluding_help
+                 }
+             | None, false -> None
+             | None, true ->
+               Some
+                 { subcommand_up_to_help = subcommand_acc_including_current
+                 ; subcommand_excluding_help = subcommand_acc
+                 }
+           in
+           loop subcommand xs subcommand_acc_including_current ~traverse_help
          | None ->
            (* The current word doesn't correspond to a subcommand, however it's
               possible that it's intended as an argument for the default arg
@@ -321,8 +487,8 @@ module Command = struct
                 the user mistyped the name of a subcommand instead. Throw a parse
                 error to that affect. *)
              let rich_command_line =
-               { Command_line.Rich.program = command_line.program
-               ; args = command_line.args
+               { Command_line.Rich.program = raw_command_line.program
+               ; args = raw_command_line.args
                ; subcommand = subcommand_acc
                }
              in
@@ -336,17 +502,43 @@ module Command = struct
                { operation = `Arg_parser default_arg_parser
                ; args = x :: xs
                ; subcommand = List.rev subcommand_acc
+               ; raw_command_line
+               ; traverse_help
                })
       | Group { children = _; default_arg_parser; doc = _ }, [] ->
         Ok
           { operation = `Arg_parser default_arg_parser
           ; args = []
           ; subcommand = List.rev subcommand_acc
+          ; raw_command_line
+          ; traverse_help
           }
-      | Internal internal, args ->
-        Ok { operation = `Internal internal; args; subcommand = List.rev subcommand_acc }
+      | Internal Print_completion_script_bash, args ->
+        Ok
+          { operation = `Print_completion_script_bash
+          ; args
+          ; subcommand = List.rev subcommand_acc
+          ; raw_command_line
+          ; traverse_help
+          }
+      | Internal Help, _args ->
+        failwith
+          "All help commands should have been replaced by this point. This is a bug in \
+           climate."
     in
-    loop t command_line.args []
+    loop t raw_command_line.args [] ~traverse_help:None
+    |> Result.map ~f:(fun ret ->
+      (* If there are traverse_help fields their contents will be backwards
+         at this point, so reverse them. *)
+      { ret with
+        traverse_help =
+          Option.map
+            ret.traverse_help
+            ~f:(fun { subcommand_up_to_help; subcommand_excluding_help } ->
+              { subcommand_up_to_help = List.rev subcommand_up_to_help
+              ; subcommand_excluding_help = List.rev subcommand_excluding_help
+              })
+      })
   ;;
 
   let rec completion_spec = function
@@ -361,12 +553,18 @@ module Command = struct
           (Arg_parser.Private.spec Completion_config.arg_parser)
       in
       { Completion_spec.parser_spec; subcommands = [] }
+    | Internal Help ->
+      let parser_spec =
+        Spec.to_completion_parser_spec
+          (Arg_parser.Private.spec (help_command_arg_parser ()))
+      in
+      { Completion_spec.parser_spec; subcommands = [] }
     | Group { children; default_arg_parser; doc = _ } ->
       let parser_spec =
         Spec.to_completion_parser_spec (Arg_parser.Private.spec default_arg_parser)
       in
       let subcommands =
-        List.filter_map children ~f:(fun { info; command } ->
+        List.filter_map children ~f:(fun { info; command; help = _ } ->
           if info.hidden
           then None
           else (
@@ -432,7 +630,12 @@ module Command = struct
           ; subcommand = []
           }
         in
-        Arg_parser.Private.eval (arg_parser name) ~command_line ~ignore_errors:true
+        Arg_parser.Private.eval
+          (arg_parser name)
+          ~command_line
+          ~ignore_errors:true
+          ~alt_subcommand_for_usage:None
+          ~alt_subcommand_for_errors:None
     ;;
 
     let run_query
@@ -464,6 +667,7 @@ module Command = struct
     (raw_command_line : Command_line.Raw.t)
     =
     let open Result.O in
+    let t = preprocess_help t in
     let completion_spec = completion_spec t in
     (* If the top-level command was passed the reentrant query
        argument, cancel normal operation and just invoke the appropriate
@@ -478,59 +682,86 @@ module Command = struct
         let suggestions = Reentrant_query.run_query reentrant_query t completion_spec in
         Error (Non_ret.Reentrant_query { suggestions })
     in
-    let* { operation; args; subcommand } = traverse t raw_command_line in
-    let command_line =
-      { Command_line.Rich.program = raw_command_line.program; args; subcommand }
+    let* traverse_ = traverse t raw_command_line in
+    let command_line = traverse_to_rich_command_line traverse_ in
+    let arg_parser =
+      match traverse_.operation with
+      | `Arg_parser arg_parser ->
+        (* This is the common case. Run the selected argument parser
+           which will usually have the side effect of running the user's
+           program logic. *)
+        arg_parser
+      | `Print_completion_script_bash ->
+        (* Print the completion script. Note that this can't be combined
+           into the regular parser logic because it needs to know the
+           completion spec, which isn't available to regular argument
+           parsers. *)
+        Arg_parser.map'
+          finalized_print_completion_script_bash_arg_parser
+          ~f:
+            (fun
+              { Completion_config.program_name
+              ; program_exe_for_reentrant_query
+              ; global_symbol_prefix
+              ; command_hash_in_function_names
+              ; options
+              }
+            ->
+            Error
+              (Non_ret.Generate_completion_script
+                 { completion_script =
+                     Completion.generate_bash
+                       completion_spec
+                       ~program_name
+                       ~program_exe_for_reentrant_query
+                       ~print_reentrant_completions_name:
+                         eval_config.print_reentrant_completions_name
+                       ~global_symbol_prefix
+                       ~command_hash_in_function_names
+                       ~options
+                 }))
     in
-    match operation with
-    | `Arg_parser arg_parser ->
-      (* This is the common case. Run the selected argument parser
-         which will usually have the side effect of running the user's
-         program logic. *)
-      Arg_parser.Private.eval arg_parser ~command_line ~ignore_errors:false
-    | `Internal Print_completion_script_bash ->
-      let arg_parser =
-        Arg_parser.Private.finalize
-          Completion_config.arg_parser
-          ~doc:(Some (internal_doc Print_completion_script_bash))
-          ~child_subcommands:[]
-          ~prose:None
-      in
-      (* Print the completion script. Note that this can't be combined
-         into the regular parser logic because it needs to know the
-         completion spec, which isn't available to regular argument
-         parsers. *)
-      let* { Completion_config.program_name
-           ; program_exe_for_reentrant_query
-           ; global_symbol_prefix
-           ; command_hash_in_function_names
-           ; options
-           }
-        =
-        Arg_parser.Private.eval arg_parser ~command_line ~ignore_errors:false
-      in
-      Error
-        (Non_ret.Generate_completion_script
-           { completion_script =
-               Completion.generate_bash
-                 completion_spec
-                 ~program_name
-                 ~program_exe_for_reentrant_query
-                 ~print_reentrant_completions_name:
-                   eval_config.print_reentrant_completions_name
-                 ~global_symbol_prefix
-                 ~command_hash_in_function_names
-                 ~options
-           })
+    let traverse_help =
+      Option.bind traverse_.traverse_help ~f:(fun { subcommand_up_to_help; _ } ->
+        if List.equal ~eq:String.equal subcommand_up_to_help traverse_.subcommand
+        then None
+        else traverse_.traverse_help)
+    in
+    Arg_parser.Private.eval
+      arg_parser
+      ~command_line
+      ~ignore_errors:false
+      ~alt_subcommand_for_usage:
+        (Option.map traverse_help ~f:(fun { subcommand_excluding_help; _ } ->
+           subcommand_excluding_help))
+      ~alt_subcommand_for_errors:
+        (Option.map traverse_help ~f:(fun { subcommand_up_to_help; _ } ->
+           subcommand_up_to_help))
   ;;
 
   (* All the side effects that can be requested by a parser. Does not return.
      [test_friendly] prevents this function from exiting the program and prints
      all of its output to stdout. *)
-  let handle_non_ret non_ret ~help_style ~version ~test_friendly =
+  let handle_non_ret non_ret ~(help_style : Help_style.t) ~version ~test_friendly =
     let () =
       match (non_ret : Non_ret.t) with
-      | Help spec -> Help.pp help_style Format.std_formatter spec
+      | Help { command_doc_spec; error; message } ->
+        (match message with
+         | None -> ()
+         | Some message ->
+           if error
+           then (
+             let ppf = Format.err_formatter in
+             Ansi_style.pp_with_style help_style.error ppf ~f:(fun ppf ->
+               Format.pp_print_string ppf "Error: ");
+             Format.pp_print_string ppf message;
+             Format.pp_print_newline ppf ())
+           else (
+             Format.pp_print_string Format.std_formatter message;
+             Format.pp_print_newline Format.std_formatter ());
+           Format.pp_print_newline Format.std_formatter ());
+        Help.pp help_style Format.std_formatter command_doc_spec;
+        if error then exit 1
       | Manpage { prose; command_doc_spec } ->
         let manpage = { Manpage.spec = command_doc_spec; prose; version } in
         print_endline (Manpage.to_troff_string manpage)

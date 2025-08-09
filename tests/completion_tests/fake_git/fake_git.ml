@@ -75,9 +75,13 @@ let () =
            ~default_arg_parser:(bisect `Mark)
            [ subcommand "start" (singleton (bisect `Start))
            ; subcommand "reset" (singleton (bisect `Reset))
+           ; subcommand
+               "help"
+               help (* test help commands outside the root command group *)
            ]
     ; subcommand "commit" (singleton commit)
     ; subcommand "completions" ~hidden:true print_completion_script_bash
+    ; subcommand "help" help
     ]
   |> run
 ;;
