@@ -114,6 +114,8 @@ module Command : sig
       function [completion_script_bash]. *)
   val print_completion_script_bash : _ t
 
+  val help : _ t
+
   (** Returns a bash script that can be sourced in a shell to register
       completions for the command.
 

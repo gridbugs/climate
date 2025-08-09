@@ -121,6 +121,11 @@ val unit : unit t
     command line. *)
 val argv0 : string t
 
+(** A parser that just prints a usage message. *)
+val usage : error:bool -> message:string option -> _ t
+
+val to_usage : _ t -> _ t
+
 (** Takes a parser of a list and returns a parser that yields the
     last element of the list. Raises a [Parse_error.E] if the list
     is empty. *)
@@ -269,10 +274,9 @@ module Private : sig
     -> doc:string option
     -> child_subcommands:Subcommand.t list
     -> prose:Manpage.Prose.t option
+    -> use_error_subcommand:bool
+    -> help_only_doc:string option
     -> 'a t
-
-  (** A parser that just prints a usage message. *)
-  val usage : _ t
 
   (** Like [named_opt] but takes its arguments as [Name.t]s rather than
       as strings is it's intended for use within this library. *)
@@ -286,10 +290,16 @@ module Private : sig
     -> allow_many:bool
     -> 'a option t
 
+  (** Evaluate a parser, parsing command-line arguments. The alt_subcommand_
+      arguments are to support commands like `program help subcommand` where
+      we want usage strings to reference `program subcommand` and error
+      messages to reference `program help`. *)
   val eval
     :  'a t
     -> command_line:Command_line.Rich.t
     -> ignore_errors:bool
+    -> alt_subcommand_for_usage:string list option
+    -> alt_subcommand_for_errors:string list option
     -> ('a, Non_ret.t) result
 
   val command_doc_spec : _ t -> Command_line.Rich.t -> Command_doc_spec.t

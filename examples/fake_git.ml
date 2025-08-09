@@ -83,8 +83,10 @@ let () =
            ~doc:"Binary search through previous commits."
            [ subcommand "start" (singleton bisect_common ~doc:"Start a bisect.")
            ; subcommand "reset" (singleton bisect_common ~doc:"Stop a bisect.")
+           ; subcommand "help" help
            ])
     ; subcommand ~hidden:true "__internal" print_completion_script_bash
+    ; subcommand "help" help
     ]
   |> run ~program_name:(Literal "fake-git") ~version:"0.1.0"
 ;;

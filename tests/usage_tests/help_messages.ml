@@ -4,7 +4,8 @@ open Command
 let run command args =
   match For_test.eval_result ~program_name:"foo.exe" command args with
   | Ok () -> ()
-  | Error (For_test.Non_ret.Help spec) -> For_test.print_help_spec spec
+  | Error (For_test.Non_ret.Help { command_doc_spec; _ }) ->
+    For_test.print_help_spec command_doc_spec
   | Error (For_test.Non_ret.Manpage { prose; command_doc_spec }) ->
     For_test.print_manpage command_doc_spec prose
   | _ -> failwith "unexpected parser output"
