@@ -19,6 +19,7 @@ Make a fake .git directory with some branches.
   bisect
   checkout
   commit
+  help
   log
 
   $ x "fake-git checkout " \
@@ -99,6 +100,7 @@ Test that positional arguments and subcommands are both listed.
   >   "                ^"
   bad
   good
+  help
   reset
   start
 

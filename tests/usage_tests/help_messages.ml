@@ -4,7 +4,8 @@ open Command
 let run command args =
   match For_test.eval_result ~program_name:"foo.exe" command args with
   | Ok () -> ()
-  | Error (For_test.Non_ret.Help spec) -> For_test.print_help_spec spec
+  | Error (For_test.Non_ret.Help { command_doc_spec; _ }) ->
+    For_test.print_help_spec command_doc_spec
   | Error (For_test.Non_ret.Manpage { prose; command_doc_spec }) ->
     For_test.print_manpage command_doc_spec prose
   | _ -> failwith "unexpected parser output"
@@ -244,5 +245,204 @@ let%expect_test "arguments and subcommands" =
       -a, --amend
       -m, --message <STRING>
       -h, --help              Show this help message.
+    |}]
+;;
+
+let%expect_test "help command" =
+  let command =
+    group
+      [ subcommand "foo" (unit_command ())
+      ; subcommand
+          "bar"
+          (group
+             [ subcommand "baz" (unit_command ())
+             ; subcommand "help" help
+               (* exercise placing a help command somewhere other than the top level *)
+             ])
+      ; subcommand "help" help
+      ]
+  in
+  (* Test that the help command shows up in the list of commands printed by
+     running with --help. *)
+  run command [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      foo
+      bar
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test that running the help command with no arguments prints the help
+     message. *)
+  run command [ "help" ];
+  [%expect
+    {|
+    Usage: foo.exe help [COMMAND]
+           foo.exe help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      foo
+      bar
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test that we can pass a subcommand to the help command and it will print
+     the help message for that subcommand. *)
+  run command [ "help"; "foo" ];
+  [%expect
+    {|
+    Usage: foo.exe foo [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+    |}];
+  (* Test that we can pass a subcommand with subcommands of its own to the help
+     command and it will print the help message for that subcommand including
+     its subcommands. *)
+  run command [ "help"; "bar" ];
+  [%expect
+    {|
+    Usage: foo.exe bar [COMMAND]
+           foo.exe bar [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      baz
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test that we can pass a subcommand path to the help command. *)
+  run command [ "help"; "bar"; "baz" ];
+  [%expect
+    {|
+    Usage: foo.exe bar baz [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+    |}];
+  (* Test the behaviour when the help command is deeper in the subcommand
+     hierarchy. *)
+  run command [ "bar"; "help" ];
+  [%expect
+    {|
+    Usage: foo.exe bar help [COMMAND]
+           foo.exe bar help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      baz
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test the behaviour when the help command is passed to itself. This is
+     different from the output of passing --help to the help command for
+     technical reasons. Fixing it isn't a high priority at the moment.. *)
+  run command [ "help"; "help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand for info.
+
+    Usage: foo.exe help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+    |}];
+  (* Test that we can pass the path to a second help command to a help command. *)
+  run command [ "help"; "bar"; "help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand for info.
+
+    Usage: foo.exe bar help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+    |}];
+  (* Test the help message for the help command. *)
+  run command [ "help"; "--help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand (see below) for info.
+
+    Usage: foo.exe help [COMMAND]
+           foo.exe help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      foo
+      bar
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test the behaviour passing --help to a subcommand of a help command. This
+     should print the help message for the base help command rather than the
+     subcommand. *)
+  run command [ "help"; "foo"; "--help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand (see below) for info.
+
+    Usage: foo.exe help [COMMAND]
+           foo.exe help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      foo
+      bar
+      help  Print documentation for a subcommand.
+    |}];
+  (* Test passing --help to a help command that isn't in the root command. *)
+  run command [ "bar"; "help"; "--help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand (see below) for info.
+
+    Usage: foo.exe bar help [COMMAND]
+           foo.exe bar help [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      baz
+      help  Print documentation for a subcommand.
+    |}]
+;;
+
+let%expect_test "entire application is help command" =
+  (* This should never happen but check that it doesn't crash. *)
+  let command = help in
+  (* Run the command with no args. *)
+  run command [];
+  [%expect
+    {|
+    Usage: foo.exe [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+    |}];
+  (* Run the command with --help. *)
+  run command [ "--help" ];
+  [%expect
+    {|
+    Subcommand help. Pass the name of a subcommand (see below) for info.
+
+    Usage: foo.exe [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
     |}]
 ;;

@@ -20,7 +20,10 @@ module Parse_error : sig
         { locator : [ `Named of Name.t | `Positional of int ] option
         ; message : string
         }
-    | Too_many_positional_arguments of { max : int }
+    | Too_many_positional_arguments of
+        { max : int
+        ; first_excess_argument : string
+        }
     | Invalid_char_in_argument_name of
         { attempted_argument_name : string
         ; invalid_char : char

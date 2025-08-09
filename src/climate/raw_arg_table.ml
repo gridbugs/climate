@@ -76,7 +76,10 @@ let add_pos t arg ~ignore_errors =
       if ignore_errors
       then (* Return the table unchangned. *)
         Ok t
-      else Error (Parse_error.Too_many_positional_arguments { max = count })
+      else
+        Error
+          (Parse_error.Too_many_positional_arguments
+             { max = count; first_excess_argument = arg })
     else Ok ret
 ;;
 

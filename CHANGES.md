@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add a help command (#18)
+
 ## 0.7.0
 
 ### Changed

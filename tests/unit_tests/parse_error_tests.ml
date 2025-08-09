@@ -6,10 +6,17 @@ let%expect_test "no args to empty parser" =
   run (Command.singleton (Arg_parser.const ())) []
 ;;
 
-let%expect_test "too many positional args" =
-  run (Command.singleton (Arg_parser.const ())) [ "foo" ];
+let%expect_test "positional args passed to command with no positional args" =
+  run (Command.singleton (Arg_parser.const ())) [ "foo"; "bar"; "baz" ];
   [%expect
-    {| Too many positional arguments. At most 0 positional arguments may be passed. |}]
+    {| This command does not accept any positional arguments. First excess argument: foo |}]
+;;
+
+let%expect_test "positional args passed to command with no positional args" =
+  let term = Arg_parser.(pos_req 0 string) in
+  run (Command.singleton term) [ "foo"; "bar"; "baz" ];
+  [%expect
+    {| Too many positional arguments. At most 1 positional arguments may be passed. First excess argument: bar |}]
 ;;
 
 let%expect_test "unknown argument name" =

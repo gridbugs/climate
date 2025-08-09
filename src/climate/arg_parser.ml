@@ -25,6 +25,7 @@ module Context = struct
     { raw_arg_table : Raw_arg_table.t
     ; command_line : Command_line.Rich.t
     ; command_doc_spec : Command_doc_spec.t
+    ; error_subcommand : string list
     }
 end
 
@@ -77,14 +78,36 @@ let command_doc_spec
   }
 ;;
 
-let eval t ~(command_line : Command_line.Rich.t) ~ignore_errors =
+let eval
+  t
+  ~(command_line : Command_line.Rich.t)
+  ~ignore_errors
+  ~alt_subcommand_for_usage
+  ~alt_subcommand_for_errors
+  =
   let open Result.O in
-  let command_doc_spec = command_doc_spec t.arg_spec t.command_doc command_line in
+  let subcommand_for_errors =
+    Option.value alt_subcommand_for_errors ~default:command_line.subcommand
+  in
+  let subcommand_for_usage =
+    Option.value alt_subcommand_for_usage ~default:command_line.subcommand
+  in
+  let command_doc_spec subcommand =
+    { (command_doc_spec t.arg_spec t.command_doc command_line) with subcommand }
+  in
   let* raw_arg_table =
     Raw_arg_table.parse t.arg_spec command_line.args ~ignore_errors
-    |> Result.map_error ~f:(fun error -> Non_ret.Parse_error { command_doc_spec; error })
+    |> Result.map_error ~f:(fun error ->
+      Non_ret.Parse_error
+        { command_doc_spec = command_doc_spec subcommand_for_errors; error })
   in
-  let context = { Context.raw_arg_table; command_line; command_doc_spec } in
+  let context =
+    { Context.raw_arg_table
+    ; command_line
+    ; command_doc_spec = command_doc_spec subcommand_for_usage
+    ; error_subcommand = subcommand_for_errors
+    }
+  in
   t.arg_compute context
 ;;
 
@@ -118,7 +141,14 @@ module Completion = struct
 
   let reentrant_parse parser =
     let f command_line =
-      match eval parser ~command_line ~ignore_errors:true with
+      match
+        eval
+          parser
+          ~command_line
+          ~ignore_errors:true
+          ~alt_subcommand_for_errors:None
+          ~alt_subcommand_for_usage:None
+      with
       | Ok value -> value
       | Error _ -> failwith "Reentrant parser did not yield a result"
     in
@@ -668,9 +698,34 @@ let manpage_spec =
   Spec.create_flag Built_in.manpage_names ~doc:None ~hidden:true ~repeated:false
 ;;
 
-let usage =
+let usage ~error ~message ~override_doc =
   with_empty_command_doc ~arg_spec:Spec.empty ~arg_compute:(fun context ->
-    Error (Non_ret.Help context.command_doc_spec))
+    let doc =
+      match override_doc with
+      | Some override_doc -> Some override_doc
+      | None -> context.command_doc_spec.doc
+    in
+    Error
+      (Non_ret.Help
+         { command_doc_spec = { context.command_doc_spec with doc }; error; message }))
+;;
+
+let to_usage { arg_spec; arg_compute = _; command_doc } =
+  { arg_spec = Spec.empty
+  ; command_doc = Command_doc.empty
+  ; arg_compute =
+      (fun context ->
+        Error
+          (Non_ret.Help
+             { command_doc_spec =
+                 { context.command_doc_spec with
+                   args = Spec.command_doc_spec arg_spec
+                 ; doc = command_doc.doc
+                 }
+             ; error = false
+             ; message = None
+             }))
+  }
 ;;
 
 let add_help_and_manpage
@@ -678,6 +733,9 @@ let add_help_and_manpage
   ~doc
   ~child_subcommands
   ~prose
+  ~use_error_subcommand
+  ~help_only_doc
+  ~help_only_subcommands
   =
   let command_doc = { Command_doc.doc; child_subcommands } in
   let arg_spec = arg_spec |> Spec.merge help_spec |> Spec.merge manpage_spec in
@@ -686,7 +744,28 @@ let add_help_and_manpage
       (fun context ->
         if Raw_arg_table.get_flag_count_names context.raw_arg_table Built_in.help_names
            > 0
-        then Error (Non_ret.Help context.command_doc_spec)
+        then (
+          let command_doc_spec =
+            match use_error_subcommand with
+            | false -> context.command_doc_spec
+            | true ->
+              { context.command_doc_spec with subcommand = context.error_subcommand }
+          in
+          let command_doc_spec =
+            match help_only_doc with
+            | None -> command_doc_spec
+            | Some doc -> { command_doc_spec with doc = Some doc }
+          in
+          let command_doc_spec =
+            match help_only_subcommands with
+            | None -> command_doc_spec
+            | Some help_only_subcommands ->
+              let help_only_subcommands =
+                List.map help_only_subcommands ~f:Subcommand.command_doc_spec
+              in
+              { command_doc_spec with subcommands = help_only_subcommands }
+          in
+          Error (Non_ret.Help { command_doc_spec; error = false; message = None }))
         else if Raw_arg_table.get_flag_count_names
                   context.raw_arg_table
                   Built_in.manpage_names
@@ -699,9 +778,24 @@ let add_help_and_manpage
   }
 ;;
 
-let finalize t ~doc ~child_subcommands ~prose =
+let finalize
+  t
+  ~doc
+  ~child_subcommands
+  ~prose
+  ~use_error_subcommand
+  ~help_only_doc
+  ~help_only_subcommands
+  =
   validate t;
-  add_help_and_manpage t ~doc ~child_subcommands ~prose
+  add_help_and_manpage
+    t
+    ~doc
+    ~child_subcommands
+    ~prose
+    ~use_error_subcommand
+    ~help_only_doc
+    ~help_only_subcommands
 ;;
 
 module Reentrant = struct
@@ -727,9 +821,10 @@ module Reentrant = struct
 end
 
 module Private = struct
+  let usage = usage
+  let to_usage = to_usage
   let spec = spec
   let finalize = finalize
-  let usage = usage
   let named_opt_for_internal = named_opt_for_internal
   let eval = eval
 

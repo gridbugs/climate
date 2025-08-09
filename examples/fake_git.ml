@@ -85,6 +85,7 @@ let () =
            ; subcommand "reset" (singleton bisect_common ~doc:"Stop a bisect.")
            ])
     ; subcommand ~hidden:true "__internal" print_completion_script_bash
+    ; subcommand "help" help
     ]
   |> run ~program_name:(Literal "fake-git") ~version:"0.1.0"
 ;;
