@@ -15,7 +15,7 @@
 
 ## 0.6.0
 
-### Fixes
+### Fixed
 
 - Fix bug where completing files whose names contain spaces would separate the
   suggestions on those spaces. (#16)
@@ -44,7 +44,7 @@
   and more visible on light and dark terminals (#7)
 - Changed description of `--help` argument.
 
-### Fixes
+### Fixed
 
 - Remove superfluous style reset escape sequences (#7)
 - Don't apply formatting to trailing spaces in argument names in help messages (#8)
