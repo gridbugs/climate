@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Omit hidden args from completions (#19)
+
 ## 0.8.0
 
 ### Added
