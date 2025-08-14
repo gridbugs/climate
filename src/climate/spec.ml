@@ -37,10 +37,14 @@ module Named = struct
     ;;
 
     let to_completion_named_arg t =
-      { Completion_spec.Named_arg.names = t.names
-      ; has_param = has_param t
-      ; hint = t.completion
-      }
+      if t.hidden
+      then None
+      else
+        Some
+          { Completion_spec.Named_arg.names = t.names
+          ; has_param = has_param t
+          ; hint = t.completion
+          }
     ;;
 
     let command_doc_spec t =
@@ -101,7 +105,9 @@ module Named = struct
     | Some help_name -> Error (Spec_error.Name_reserved_for_help help_name)
   ;;
 
-  let to_completion_named_args { infos } = List.map infos ~f:Info.to_completion_named_arg
+  let to_completion_named_args { infos } =
+    List.filter_map infos ~f:Info.to_completion_named_arg
+  ;;
 end
 
 module Positional = struct
