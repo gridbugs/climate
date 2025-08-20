@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+### Fixed
+
+- Only call `compopt` if it's defined (#20)
+
 ## 0.8.1
 
 ### Fixed
