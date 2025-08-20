@@ -169,7 +169,13 @@ module Add_reply = struct
            improvements such as appending a slash to directories and omitting the space \
            after completions so completion of paths can continue if the user presses tab \
            again."
-      ; raw "compopt -o filenames"
+      ; (* In the generated code, check whether compopt is defined and only
+           call it if it is. If the shell is actually bash then compopt should
+           always be defined, however bash completion scripts are sometimes sourced
+           by zsh with bash compatibility (bashcompinit). However bashcompinit does
+           not emulate the compopt function, which means calling it unconditionally
+           causes errors in zsh. *)
+        raw "type compopt &> /dev/null && compopt -o filenames"
       ]
   ;;
 
