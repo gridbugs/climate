@@ -30,7 +30,7 @@ module Style = struct
   ;;
 end
 
-let pp_print_elipsis ppf () = Format.pp_print_string ppf "…"
+let pp_print_elipsis ppf () = Format.pp_print_string ppf "..."
 
 let rec pp_print_newlines ppf = function
   | n when n <= 0 -> ()

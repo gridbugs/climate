@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fix alignment of doc text of positional arguments (#21)
+
 ## 0.8.2
 
 ### Fixed
