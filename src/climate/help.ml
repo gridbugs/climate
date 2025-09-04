@@ -201,20 +201,24 @@ module Positional_args = struct
 
   let to_print_section { fixed; repeated } =
     let entries =
-      List.map fixed ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
-        { Print.Entry.names = Print.Names.empty
-        ; value = Some value
-        ; doc
-        ; repeated = false
-        })
-      |> List.append
-           (Option.map repeated ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
-              { Print.Entry.names = Print.Names.empty
-              ; value = Some value
-              ; doc
-              ; repeated = true
-              })
-            |> Option.to_list)
+      let fixed =
+        List.map fixed ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
+          { Print.Entry.names = Print.Names.empty
+          ; value = Some value
+          ; doc
+          ; repeated = false
+          })
+      in
+      let repeated =
+        Option.map repeated ~f:(fun { Command_doc_spec.Positional_arg.value; doc } ->
+          { Print.Entry.names = Print.Names.empty
+          ; value = Some value
+          ; doc
+          ; repeated = true
+          })
+        |> Option.to_list
+      in
+      fixed @ repeated
     in
     { Print.Section.section_heading = "Arguments:"; entries }
   ;;
