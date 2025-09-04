@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.8.3
 
 ### Fixed
 
 - Fix alignment of doc text of positional arguments (#21)
-- Print repeated positional argument docs below fixed positionalargument docs
+- Print repeated positional argument docs below fixed positionalargument docs (#22)
 
 ## 0.8.2
 
