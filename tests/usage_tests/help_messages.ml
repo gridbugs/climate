@@ -462,9 +462,9 @@ let%expect_test "positional arguments" =
     Usage: foo.exe [OPTION]… <FIRST> <SECOND> [REST]…
 
     Arguments:
-      [REST]...  rest doc
       <FIRST>    first doc
       <SECOND>   second doc
+      [REST]...  rest doc
 
     Options:
       -h, --help  Show this help message.
