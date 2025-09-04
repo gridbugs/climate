@@ -446,3 +446,27 @@ let%expect_test "entire application is help command" =
       -h, --help  Show this help message.
     |}]
 ;;
+
+let%expect_test "positional arguments" =
+  run
+    (singleton
+     @@
+     let open Arg_parser in
+     let+ _ = pos_req 0 string ~value_name:"FIRST" ~doc:"first doc"
+     and+ _ = pos_req 1 string ~value_name:"SECOND" ~doc:"second doc"
+     and+ _ = pos_right 1 string ~value_name:"REST" ~doc:"rest doc" in
+     ())
+    [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [OPTION]… <FIRST> <SECOND> [REST]…
+
+    Arguments:
+      [REST]...  rest doc
+      <FIRST>    first doc
+      <SECOND>   second doc
+
+    Options:
+      -h, --help  Show this help message.
+    |}]
+;;
