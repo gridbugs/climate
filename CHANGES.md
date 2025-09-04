@@ -5,7 +5,7 @@
 ### Fixed
 
 - Fix alignment of doc text of positional arguments (#21)
-- Print repeated positional argument docs below fixed positionalargument docs (#22)
+- Print repeated positional argument docs below fixed positional argument docs (#22)
 
 ## 0.8.2
 
