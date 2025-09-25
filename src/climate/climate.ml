@@ -184,6 +184,8 @@ let help_command_arg_parser () =
   Arg_parser.Private.usage ~error:false ~message:None ~override_doc:None
 ;;
 
+module Completion_options = Completion.Options
+
 module Command = struct
   type internal =
     | Print_completion_script_bash

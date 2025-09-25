@@ -84,6 +84,16 @@ module Program_name : sig
     | Literal of string
 end
 
+module Completion_options : sig
+  type t =
+    { no_comments : bool
+    ; no_whitespace : bool
+    ; minify_global_names : bool
+    ; minify_local_variables : bool
+    ; optimize_case_statements : bool
+    }
+end
+
 module Command : sig
   type 'a t
 
@@ -153,7 +163,7 @@ module Command : sig
     -> ?global_symbol_prefix:[ `Random | `Custom of string ]
     -> ?command_hash_in_function_names:bool
     -> ?program_name:Program_name.t
-    -> ?options:Completion.Options.t
+    -> ?options:Completion_options.t
     -> _ t
     -> string
 
