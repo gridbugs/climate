@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.4
+
+### Changed
+
+- Expose `Completion_options.t` type (#23)
+
 ## 0.8.3
 
 ### Fixed
