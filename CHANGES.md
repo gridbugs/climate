@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Quote some values in error messages (#24)
+
 ## 0.8.4
 
 ### Changed
