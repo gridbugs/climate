@@ -93,12 +93,12 @@ module Parse_error = struct
        | None -> sprintf "Failed to parse the argument: %s" message)
     | Too_many_positional_arguments { max = 0; first_excess_argument } ->
       sprintf
-        "This command does not accept any positional arguments. First excess argument: %s"
+        "This command does not accept any positional arguments. First excess argument: %S"
         first_excess_argument
     | Too_many_positional_arguments { max; first_excess_argument } ->
       sprintf
         "Too many positional arguments. At most %d positional arguments may be passed. \
-         First excess argument: %s"
+         First excess argument: %S"
         max
         first_excess_argument
     | Invalid_char_in_argument_name { attempted_argument_name; invalid_char } ->
@@ -106,7 +106,7 @@ module Parse_error = struct
         "Invalid character %C in argument name %S"
         invalid_char
         attempted_argument_name
-    | No_such_subcommand subcommand -> sprintf "No such subcommand: %s" subcommand
+    | No_such_subcommand subcommand -> sprintf "No such subcommand: %S" subcommand
   ;;
 
   let exit_code = 124
