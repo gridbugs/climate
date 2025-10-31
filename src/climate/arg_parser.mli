@@ -173,7 +173,7 @@ val named_req
 val flag_count : ?doc:string -> ?hidden:bool -> string list -> int t
 
 (** A flag that may appear at most once on the command line. *)
-val flag : ?doc:string -> string list -> bool t
+val flag : ?doc:string -> ?hidden:bool -> string list -> bool t
 
 (** [pos_opt i conv] declares an optional anonymous positional
     argument at position [i] (starting at 0). *)

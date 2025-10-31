@@ -559,8 +559,8 @@ let flag_count ?doc ?hidden names =
       Ok (Raw_arg_table.get_flag_count_names context.raw_arg_table names))
 ;;
 
-let flag_gen ?doc names ~allow_many =
-  flag_count ?doc names
+let flag_gen ?doc ?hidden names ~allow_many =
+  flag_count ?doc ?hidden names
   |> map_context' ~f:(fun n context ->
     match n with
     | 0 -> Ok false
