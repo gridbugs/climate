@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## Changed
+### Changed
 
 - Allow flags to be hidden (#25)
 
