@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+## Changed
+
+- Allow flags to be hidden (#25)
+
 ## 0.8.5
 
 ### Changed
