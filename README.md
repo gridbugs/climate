@@ -4,24 +4,26 @@
 
 A declarative command-line parser for OCaml.
 
-## Rationale
+The API is documented [here](https://ocaml.org/p/climate/latest).
 
-Programs written in OCaml should conform to existing UX conventions so as to
-match the expectations of users coming from other tools. For command-line
-programs which wish to parse their arguments in a declarative style, existing
-solutions all seem to deviate from the conventions established by common Unix
-tools. The two popular libraries for declarative command-line argument parsing
-in OCaml are`cmdliner` and `base`'s `Command` module. Both of these libraries
-present unconventional behaviour in that non-ambiguous prefixes of arguments are
-treated as the full argument names. Additionally, `cmdliner` lacks support for
-generating shell autocompletion scripts, and `base` only supports arguments
-beginning with a single `-`.
+## About
 
-This library aims to be an alternative to `cmdliner` and `Base.Command` with
-support for generating autocompletion scripts and which behaves as
-conventionally as possible.
+A library for parsing command-line arguments in a declarative style, where
+specifying the parser spec and assigning parsed arguments to variables in your
+program is done with the same code. Climate supports CLIs with nested
+subcommands, and can automatically generate help messages, manpages, and shell
+completion scripts.
 
-## Example
+Here's a tiny example:
+```ocaml
+let open Arg_parser in
+let+ flag_foo = flag [ "foo" ] ~doc:"some flag"
+and+ value_bar = named_opt [ "bar" ] string ~doc:"some string value"
+in
+(* ...do something with the parsed values... *)
+```
+
+## Full Example
 
 Here's a complete example program with built-in support for generating its own
 completion script.
@@ -70,16 +72,16 @@ let main ~bold ~underline ~color words =
 
 let () =
   let command =
-    Command.singleton ~desc:"Echo with style!"
+    Command.singleton ~doc:"Echo with style!"
     @@
     let open Arg_parser in
-    (* Describe and parse the command line arguments:*)
-    let+ bold = flag [ "bold" ] ~desc:"Make the text bold"
-    and+ underline = flag [ "underline" ] ~desc:"Underline the text"
-    and+ color = named_opt [ "color" ] Color.conv ~desc:"Set the text color"
+    (* Describe and parse the command line arguments: *)
+    let+ bold = flag [ "bold" ] ~doc:"Make the text bold"
+    and+ underline = flag [ "underline" ] ~doc:"Underline the text"
+    and+ color = named_opt [ "color" ] Color.conv ~doc:"Set the text color"
     and+ words = pos_all string
     and+ completion =
-      flag [ "completion" ] ~desc:"Print this program's completion script and exit"
+      flag [ "completion" ] ~doc:"Print this program's completion script and exit"
     in
     if completion
     then `Completion
@@ -87,10 +89,22 @@ let () =
   in
   (* Run the parser yielding either a main function to call or an indication
      that we should print the completion script. *)
-  match Command.run command with
+  let help_style =
+    let open Help_style in
+    { program_doc = { ansi_style_plain with color = Some `Green }
+    ; usage = { ansi_style_plain with color = Some `Yellow }
+    ; section_heading = { ansi_style_plain with color = Some `Red }
+    ; arg_name = { ansi_style_plain with color = Some `Blue }
+    ; arg_doc = { ansi_style_plain with color = Some `Cyan }
+    ; error = { ansi_style_plain with color = Some `Red }
+    }
+  in
+  match
+    Command.run ~program_name:(Literal "echo-ansi") ~version:"0.0.1" ~help_style command
+  with
   | `Completion -> print_endline (Command.completion_script_bash command)
   | `Main main -> main ()
-;
+;;
 ```
 
 This program lives in `examples/echo_ansi.ml`. Run it with `dune exec
@@ -98,17 +112,22 @@ examples/echo_ansi.exe -- <ARGS>`. E.g.
 
 ```
 $ dune exec examples/echo_ansi.exe -- --help
-Usage: _build/default/examples/echo_ansi.exe [OPTIONS] [STRING]...
-
 Echo with style!
 
+Usage: echo-ansi [OPTION]… [STRING]…
+
+Arguments:
+  [STRING]...
+
 Options:
- --bold   Make the text bold
- --underline   Underline the text
- --color <COLOR>   Set the text color
- --completion   Print this program's completion script and exit
- --help, -h   Print help
+      --bold           Make the text bold
+      --underline      Underline the text
+      --color <COLOR>  Set the text color
+      --completion     Print this program's completion script and exit
+  -h, --help           Show this help message.
 ```
+
+## Shell Completion
 
 The easiest way to setup the completion script is to first put the executable
 in a directory in your PATH. E.g.
@@ -147,52 +166,7 @@ compinit
 bashcompinit
 ```
 
-## Manual
-
-### Terminology
-
-__Term__ will refer to each space-delimited string on the command line after the
-program name. The command `ls -l --color=always /etc/` has 3 terms. The program
-name is `ls` (not a term), and the terms are `-l`, `--color=always`, and
-`/etc/`.
-
-__Argument__ will refer to each distinct piece of information passed to the
-program on the command line. The command `make -td --jobs 4 all` has 4
-arguments. The `-td` term is made up of two arguments combined into a single
-term: `-t` and `-d` (more on this later). `--jobs 4` is a single argument
-comprising two terms, where `4` is a parameter to the argument `--jobs`. The
-final term `all` is also an argument.
-
-Arguments may be __positional__ or __named__. Positional arguments are
-identified by their position in the argument list rather than by name. Named
-arguments may have two forms: __short__ and __long__. Short named arguments
-begin with a single `-` followed by a single non `-` character, such as `-l`.
-Long named arguments begin with `--` followed by one or more non `-` characters,
-such as `--jobs`. A collection of short named arguments may be combined together
-with a single leading `-` followed by each short argument name. For example in
-`ls -la`, the `-la` is an alternative way of writing `-l -a`.
-
-A named argument may take a __parameter__. A parameter is a single value which
-follows the argument on the command line. Using `make`'s `--jobs` argument as an
-example, here are the different ways of passing a parameter to a named argument
-on the command line:
-
-```
-make --jobs=4   # long name with equals sign
-make --jobs 4   # long name space delimited
-make -j 4       # short name space delimited
-make -j4        # short name without space
-```
-
-If multiple short arguments are combined into a single term then only one of
-those arguments may take a parameter. If the parameterized argument appears as
-the final argument in the sequence then the following term will be treated as
-its parameter, such as in `make -dj 4`, which is equivalent to `make -d -j 4`.
-If the parameterized argument appears in a non-final position within the
-sequence then the remainder of the sequence is treated as its parameter, such as
-in `make -dj4` which is also equivalent to `make -d -j 4`.
-
-### Manpages
+## Manpages
 
 To generate a manpage for a command, run the command with the hidden flag
 `--manpage`. This command will print the manpage in the troff format to stdout.

@@ -18,6 +18,8 @@
 (package
  (name climate)
  (synopsis "Declarative command-line parser for OCaml")
+ (description
+  "A library for parsing command-line arguments in a declarative style, where the parser spec and assigning parsed arguments to variables in your program is done with the same code. Climate supports CLIs with nested subcommands, and can automatically generate help messages, manpages, and shell completion scripts.")
  (depends
   (ocaml
    (>= 4.14))))
