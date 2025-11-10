@@ -68,7 +68,7 @@ let escape { bold; dim; underline; color } =
 ;;
 
 let pp_with_style t ppf ~f =
-  if not (is_default t) then Format.pp_print_string ppf (escape t);
+  if not (is_default t) then Format.pp_print_as ppf 0 (escape t);
   f ppf;
-  if not (is_default t) then Format.pp_print_string ppf reset
+  if not (is_default t) then Format.pp_print_as ppf 0 reset
 ;;

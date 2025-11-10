@@ -1,11 +1,11 @@
 open Climate
 open Command
 
-let run command args =
+let run ?(style = Help_style.plain) command args =
   match For_test.eval_result ~program_name:"foo.exe" command args with
   | Ok () -> ()
   | Error (For_test.Non_ret.Help { command_doc_spec; _ }) ->
-    For_test.print_help_spec command_doc_spec
+    For_test.print_help_spec_with_style style command_doc_spec
   | Error (For_test.Non_ret.Manpage { prose; command_doc_spec }) ->
     For_test.print_manpage command_doc_spec prose
   | _ -> failwith "unexpected parser output"
@@ -468,5 +468,141 @@ let%expect_test "positional arguments" =
 
     Options:
       -h, --help  Show this help message.
+    |}]
+;;
+
+let lorem_ipsum =
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor \
+   incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud \
+   exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure \
+   dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla"
+;;
+
+let lorem_reversed =
+  lorem_ipsum |> String.to_seq |> List.of_seq |> List.rev |> List.to_seq |> String.of_seq
+;;
+
+let%expect_test "a long arg document" =
+  run
+    (singleton
+     @@
+     let open Arg_parser in
+     let+ _ = flag [ "lorem" ] ~doc:(String.sub lorem_ipsum 0 100)
+     and+ _ = flag [ "ipsum" ] ~doc:(String.sub lorem_reversed 0 100) in
+     ())
+    [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [OPTION]…
+
+    Options:
+          --lorem  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+          --ipsum  allun taiguf ue erolod mullic esse tilev etatpulov ni tiredneherper ni rolod eruri etua siuD .tauqes
+      -h, --help   Show this help message.
+    |}]
+;;
+
+let%expect_test "a long arg document with margin" =
+  let cmd =
+    singleton
+    @@
+    let open Arg_parser in
+    let+ _ = flag [ "lorem" ] ~doc:lorem_ipsum
+    and+ _ = flag [ "ipsum" ] ~doc:lorem_reversed in
+    ()
+  in
+  run ~style:{ Help_style.plain with margin = Some 80 } cmd [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [OPTION]…
+
+    Options:
+          --lorem  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+                   eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+                   enim ad minim veniam, quis nostrud exercitation ullamco laboris
+                   nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+                   in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+                   nulla
+          --ipsum  allun taiguf ue erolod mullic esse tilev etatpulov ni
+                   tiredneherper ni rolod eruri etua siuD .tauqesnoc odommoc ae xe
+                   piuqila tu isin sirobal ocmallu noitaticrexe durtson siuq
+                   ,mainev minim da mine tU .auqila angam erolod te erobal tu
+                   tnudidicni ropmet domsuie od des ,tile gnicsipida rutetcesnoc
+                   ,tema tis rolod muspi meroL
+      -h, --help   Show this help message.
+    |}];
+  (* adding ansi escape sequences does not harm the shape *)
+  run
+    ~style:
+      { Help_style.plain with
+        margin = Some 80
+      ; arg_doc = { color = Some `Yellow; bold = true; dim = true; underline = true }
+      }
+    cmd
+    [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [OPTION]…
+
+    Options:
+          --lorem  [33;1;2;4mLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+                   eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+                   enim ad minim veniam, quis nostrud exercitation ullamco laboris
+                   nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+                   in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+                   nulla[0m
+          --ipsum  [33;1;2;4mallun taiguf ue erolod mullic esse tilev etatpulov ni
+                   tiredneherper ni rolod eruri etua siuD .tauqesnoc odommoc ae xe
+                   piuqila tu isin sirobal ocmallu noitaticrexe durtson siuq
+                   ,mainev minim da mine tU .auqila angam erolod te erobal tu
+                   tnudidicni ropmet domsuie od des ,tile gnicsipida rutetcesnoc
+                   ,tema tis rolod muspi meroL[0m
+      -h, --help   [33;1;2;4mShow this help message.[0m
+    |}]
+;;
+
+let%expect_test "a long command document" =
+  let lorem = unit_command ~doc:(String.sub lorem_ipsum 0 100) () in
+  let ipsum = unit_command ~doc:(String.sub lorem_reversed 0 100) () in
+  let cmd = group [ subcommand "lorem" lorem; subcommand "ipsum" ipsum ] in
+  run cmd [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      lorem  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+      ipsum  allun taiguf ue erolod mullic esse tilev etatpulov ni tiredneherper ni rolod eruri etua siuD .tauqes
+    |}]
+;;
+
+let%expect_test "a long command document with margin" =
+  let lorem = unit_command ~doc:lorem_ipsum () in
+  let ipsum = unit_command ~doc:lorem_reversed () in
+  let cmd = group [ subcommand "lorem" lorem; subcommand "ipsum" ipsum ] in
+  run ~style:{ Help_style.plain with margin = Some 80 } cmd [ "--help" ];
+  [%expect
+    {|
+    Usage: foo.exe [COMMAND]
+           foo.exe [OPTION]…
+
+    Options:
+      -h, --help  Show this help message.
+
+    Commands:
+      lorem  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+             eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
+             minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+             aliquip ex ea commodo consequat. Duis aute irure dolor in
+             reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla
+      ipsum  allun taiguf ue erolod mullic esse tilev etatpulov ni tiredneherper ni
+             rolod eruri etua siuD .tauqesnoc odommoc ae xe piuqila tu isin sirobal
+             ocmallu noitaticrexe durtson siuq ,mainev minim da mine tU .auqila
+             angam erolod te erobal tu tnudidicni ropmet domsuie od des ,tile
+             gnicsipida rutetcesnoc ,tema tis rolod muspi meroL
     |}]
 ;;

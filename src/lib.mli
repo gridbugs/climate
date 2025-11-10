@@ -36,6 +36,7 @@ module Help_style : sig
     ; arg_doc : ansi_style
     ; section_heading : ansi_style
     ; error : ansi_style
+    ; margin : int option
     }
 
   (** An opinionated default value with some colours and formatting *)
@@ -213,5 +214,6 @@ module For_test : sig
     -> ('a, Non_ret.t) result
 
   val print_help_spec : Command_doc_spec.t -> unit
+  val print_help_spec_with_style : Help_style.t -> Command_doc_spec.t -> unit
   val print_manpage : Command_doc_spec.t -> Manpage.prose -> unit
 end

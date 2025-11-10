@@ -66,6 +66,7 @@ let () =
     ; arg_name = { ansi_style_plain with color = Some `Blue }
     ; arg_doc = { ansi_style_plain with color = Some `Cyan }
     ; error = { ansi_style_plain with color = Some `Red }
+    ; margin = None
     }
   in
   match
