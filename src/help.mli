@@ -8,6 +8,7 @@ module Style : sig
     ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
     ; error : Ansi_style.t
+    ; margin : int option
     }
 
   (** An opinionated default value with some colours and formatting *)

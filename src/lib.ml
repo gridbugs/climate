@@ -858,6 +858,7 @@ module For_test = struct
   ;;
 
   let print_help_spec spec = Help.pp Help_style.plain Format.std_formatter spec
+  let print_help_spec_with_style style spec = Help.pp style Format.std_formatter spec
 
   let print_manpage spec prose =
     let manpage = { Manpage.spec; prose; version = None } in

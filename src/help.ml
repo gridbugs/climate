@@ -9,6 +9,7 @@ module Style = struct
     ; arg_doc : Ansi_style.t
     ; section_heading : Ansi_style.t
     ; error : Ansi_style.t
+    ; margin : int option
     }
 
   let plain =
@@ -18,6 +19,7 @@ module Style = struct
     ; arg_doc = Ansi_style.default
     ; section_heading = Ansi_style.default
     ; error = Ansi_style.default
+    ; margin = None
     }
   ;;
 
@@ -47,6 +49,11 @@ let rec pp_print_spaces ppf = function
   | n ->
     Format.pp_print_string ppf " ";
     pp_print_spaces ppf (n - 1)
+;;
+
+let pp_print_string_as_seq ppf s =
+  let s = String.split_on_char ~sep:' ' s in
+  Format.pp_print_list ~pp_sep:Format.pp_print_space Format.pp_print_string ppf s
 ;;
 
 module Print = struct
@@ -128,6 +135,7 @@ module Print = struct
       ~doc_left_padding
       t
       =
+      Format.pp_open_box ppf (doc_left_padding + 4);
       pp_print_spaces ppf indent;
       let names_value_string =
         names_value_padded_to_string ~at_least_one_left_name ~right_names_left_padding t
@@ -139,7 +147,7 @@ module Print = struct
         let padding = doc_left_padding - String.length names_value_string in
         pp_print_spaces ppf padding;
         Ansi_style.pp_with_style style.arg_doc ppf ~f:(fun ppf ->
-          Format.pp_print_string ppf doc));
+          pp_print_string_as_seq ppf doc));
       Format.pp_print_newline ppf ()
     ;;
   end
@@ -184,6 +192,7 @@ module Print = struct
         let doc_left_padding =
           max_name_length ~at_least_one_left_name ~right_names_left_padding t
         in
+        Format.pp_open_box ppf (doc_left_padding + 4);
         List.iter t.entries ~f:(fun entry ->
           Entry.pp_padded
             style
@@ -299,6 +308,8 @@ let pp_usage (style : Style.t) ppf (spec : Command_doc_spec.t) =
 ;;
 
 let pp (style : Style.t) ppf (spec : Command_doc_spec.t) =
+  let margin = Option.value ~default:1_000_000 style.margin in
+  Format.pp_set_margin Format.std_formatter margin;
   Option.iter spec.doc ~f:(fun spec ->
     Ansi_style.pp_with_style style.program_doc ppf ~f:(fun ppf ->
       Format.pp_print_string ppf spec);
